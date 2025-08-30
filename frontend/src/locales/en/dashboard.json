@@ -1,0 +1,35 @@
+{
+  "welcome": "Hello, {{username}}! 👋",
+  "subtitle": "Welcome to your Boilerplate Dashboard",
+  "loading_dashboard": "Loading dashboard...",
+  "failed_to_load": "Failed to load dashboard data",
+  "user_information": "User Information",
+  "system_health": "System Health",
+  "version_information": "Version Information",
+  "celery_task_demo": "Celery Task Demo",
+  "user_info": {
+    "username": "Username:",
+    "email": "Email:",
+    "joined": "Joined:",
+    "unknown": "Unknown"
+  },
+  "health": {
+    "database": "Database:",
+    "redis": "Redis:",
+    "celery": "Celery:",
+    "overall": "Overall:",
+    "workers": "{{count}} workers"
+  },
+  "version": {
+    "app": "App:",
+    "environment": "Environment:",
+    "description": "Description:"
+  },
+  "tasks": {
+    "create_echo_task": "Create Echo Task",
+    "creating_task": "Creating Task...",
+    "task_id": "Task ID: {{taskId}}",
+    "state": "State:",
+    "result": "Result:"
+  }
+}

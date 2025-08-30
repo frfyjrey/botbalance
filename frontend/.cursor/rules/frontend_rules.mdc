@@ -1,0 +1,78 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+
+
+## 0 · Immutable files — ask before touching
+
+tailwind.config.js, postcss.config.js, vite.config.ts, tsconfig.json
+
+.eslintrc.*, .prettierrc.*, .stylelintrc.*
+
+frontend_rules.mdc
+
+If you need to modify these files, you must explicitly ask the user, explain why the change is necessary, and wait for approval.
+
+## 1 · Forbidden actions
+
+Duplicate artifacts — always check if the entity/feature/page/store already exists before creating a new one.
+
+State rule — server data goes in TanStack Query only; Zustand is for transient UI state only.
+
+Network rule — all HTTP requests must go through the shared HTTP client/function; never import axios or use raw fetch.
+
+TypeScript strictness — any and @ts-ignore are forbidden; always use strict types or Zod schemas.
+
+I18n — no inline literals; every user-facing string must live in i18n JSON.
+
+Styling — never use the inline style prop; stick to Tailwind classes and shadcn variants.
+
+Routing — always use the central routes file; never instantiate React Router elsewhere.
+
+Не рисуй диаграммы
+
+## 2 · Pull-request checks
+Check	Command
+ESLint + Prettier	pnpm lint
+Unit/component tests	pnpm test:run
+Playwright smoke test	pnpm e2e:auto
+
+A PR can only be merged if all checks are green.
+
+## 3 · Coding conventions
+
+Follow the FSD-lite folder hierarchy: shared → entities → features → pages → app.
+
+Use path aliases (@shared/, @entities/, …) instead of deep relative imports.
+
+Keep tests next to their files in __tests__/.
+
+Use clsx for conditional classes.
+
+Wrap feature entry points with Suspense and ErrorBoundary.
+
+## 4 · Frontend architecture
+
+FSD-lite layers:
+
+shared/ui — base UI only (Button, Input, Card).
+
+widgets — composites (Layout, Header).
+
+features — business logic + UI.
+
+pages — app pages.
+
+Prefer shadcn/ui components first; customize via className instead of raw HTML.
+
+## 5 · Testing
+
+Component tests: Vitest + Testing Library; stub API with MSW.
+
+E2E tests: Playwright; at least one flow: login → dashboard shows balance.
+
+## 6 · Git flow
+
+Use separate branches and PRs for backend and frontend changes.
