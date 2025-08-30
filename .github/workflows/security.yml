@@ -34,6 +34,7 @@ permissions:
   contents: read
   security-events: write
   actions: read
+  pull-requests: read  # Для GitLeaks PR scanning
 
 # 🌍 Environment variables  
 env:
@@ -134,7 +135,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
         with:
-          config-path: .gitleaks.toml # Создадим конфиг файл
+          config-path: .gitleaks.toml
 
   # 🔬 CodeQL Analysis
   codeql:
@@ -167,6 +168,7 @@ jobs:
         uses: github/codeql-action/analyze@v3
         with:
           category: "/language:${{matrix.language}}"
+        continue-on-error: true  # Don't fail if code scanning is not enabled
 
   # 📊 Dependency Updates Check
   dependency-updates:

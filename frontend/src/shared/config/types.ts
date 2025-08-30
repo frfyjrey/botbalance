@@ -3,7 +3,7 @@
  */
 
 // API Response types
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   status: 'success' | 'error';
   message?: string;
   data?: T;
@@ -76,8 +76,8 @@ export interface TaskStatusResponse {
   task?: {
     task_id: string;
     state: string;
-    result: any;
-    info: any;
+    result: unknown;
+    info: unknown;
     traceback: string | null;
     successful: boolean | null;
     ready: boolean;
@@ -122,11 +122,11 @@ export interface AuthState {
 }
 
 // Form types
-export type FormErrors<T = any> = {
+export type FormErrors<T = Record<string, unknown>> = {
   [K in keyof T]?: string[];
 };
 
-export interface FormState<T = any> {
+export interface FormState<T = Record<string, unknown>> {
   data: T;
   errors: FormErrors<T>;
   isSubmitting: boolean;

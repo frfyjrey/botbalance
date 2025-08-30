@@ -7,10 +7,13 @@ const queryClient = new QueryClient({
     queries: {
       staleTime: 1000 * 60 * 5, // 5 minutes
       refetchOnWindowFocus: false,
-      retry: (failureCount, error: any) => {
+      retry: (failureCount, error: unknown) => {
         // Don't retry on 401, 403, or 404
-        if (error?.status === 401 || error?.status === 403 || error?.status === 404) {
-          return false;
+        if (error && typeof error === 'object' && 'status' in error) {
+          const status = (error as { status: number }).status;
+          if (status === 401 || status === 403 || status === 404) {
+            return false;
+          }
         }
         return failureCount < 3;
       },

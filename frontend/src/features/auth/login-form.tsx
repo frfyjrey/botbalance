@@ -67,7 +67,9 @@ export const LoginForm = ({ onSuccess, className }: LoginFormProps) => {
                   borderColor: 'rgb(var(--alert-error-border))',
                   color: 'rgb(var(--fg-default))'
                 }}>
-                  {(login.error as any)?.message || t('authentication_failed')}
+                  {(login.error && typeof login.error === 'object' && 'message' in login.error 
+                    ? (login.error as { message: string }).message 
+                    : t('authentication_failed'))}
                 </div>
               )}
 

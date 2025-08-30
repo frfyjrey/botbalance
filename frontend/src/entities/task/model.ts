@@ -66,7 +66,7 @@ export const getTaskProgress = (task: TaskStatusResponse['task']): {
   };
 };
 
-export const formatTaskResult = (result: any): string => {
+export const formatTaskResult = (result: unknown): string => {
   if (typeof result === 'string') {
     return result;
   }

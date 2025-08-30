@@ -9,6 +9,7 @@ const LoginPage = lazy(() => import('@pages/login'));
 const DashboardPage = lazy(() => import('@pages/dashboard'));
 
 // Loading fallback
+// eslint-disable-next-line react-refresh/only-export-components
 const PageLoader = () => (
   <div className="flex items-center justify-center min-h-screen">
     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
@@ -16,6 +17,7 @@ const PageLoader = () => (
 );
 
 // Route components with Suspense
+// eslint-disable-next-line react-refresh/only-export-components
 const SuspenseWrapper = ({ children }: { children: React.ReactNode }) => (
   <Suspense fallback={<PageLoader />}>
     {children}

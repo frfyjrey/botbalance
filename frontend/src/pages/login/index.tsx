@@ -3,7 +3,7 @@ import { ErrorBoundary } from 'react-error-boundary';
 import { useNavigate } from 'react-router-dom';
 import { LoginForm } from '@features/auth';
 
-const ErrorFallback = ({ error, resetErrorBoundary }: any) => (
+const ErrorFallback = ({ error, resetErrorBoundary }: { error: Error; resetErrorBoundary: () => void }) => (
   <div className="flex items-center justify-center min-h-screen">
     <div className="text-center">
       <h2 className="text-xl font-semibold text-red-600 mb-2">Something went wrong</h2>

@@ -21,7 +21,7 @@ export const useUserProfile = () => {
         return response.data || null; // Ensure we never return undefined
       } catch (error) {
         // If it's an auth error, clear tokens and update store
-        if ((error as any)?.status === 401) {
+        if (error && typeof error === 'object' && 'status' in error && (error as { status: number }).status === 401) {
           tokenManager.clearTokens();
           useAuthStore.getState().setIsAuthenticated(false);
         }

@@ -3,7 +3,7 @@ import { ErrorBoundary } from 'react-error-boundary';
 import { useTranslation } from 'react-i18next';
 import { DashboardContent } from '@features/dashboard';
 
-const ErrorFallback = ({ error, resetErrorBoundary }: any) => {
+const ErrorFallback = ({ error, resetErrorBoundary }: { error: Error; resetErrorBoundary: () => void }) => {
   const { t } = useTranslation('dashboard');
   
   return (
