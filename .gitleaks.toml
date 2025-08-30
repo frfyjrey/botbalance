@@ -1,0 +1,34 @@
+# GitLeaks Configuration
+title = "Boilerplate GitLeaks Config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Allowlisted files and patterns"
+paths = [
+    ".env.example",
+    ".env.template", 
+    "README.md",
+    "CHANGELOG.md"
+]
+regexes = [
+    # Demo/test credentials
+    "demo-secret-key",
+    "example-password",
+    "test-secret",
+    "mock-token",
+    "fake-key",
+    "django-insecure-.*",
+    
+    # Common dev placeholders
+    "localhost",
+    "127\\.0\\.0\\.1",
+    "postgres:postgres",
+    "admin:admin",
+    
+    # Lock files pattern
+    ".*\\.lock$",
+    ".*\\.log$",
+    ".*\\.map$"
+]

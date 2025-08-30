@@ -1,0 +1,469 @@
+# 🔄 Continuous Integration Pipeline
+# 
+# 🎯 Запускается на:
+#   - Push в main/develop ветки
+#   - Pull Request в main
+#   - Manual dispatch
+#
+# 🧪 Тестирует:
+#   - Backend: Django + DRF + Celery (Linux, macOS, Windows)
+#   - Frontend: React + TypeScript (Node 18, 20, 22)  
+#   - E2E: Playwright smoke tests
+#
+# 📝 АДАПТАЦИЯ ДЛЯ НОВОГО ПРОЕКТА:
+#   1. Измените название в 'name' на ваш проект
+#   2. Обновите пути в 'paths' если изменили структуру
+#   3. Настройте переменные окружения в secrets
+#   4. Добавьте дополнительные сервисы если нужно
+
+name: 🔄 CI Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+      - '.gitignore'
+      - 'LICENSE'
+  pull_request:
+    branches: [ main ]
+    types: [opened, synchronize, reopened]
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+      - '.gitignore'
+      - 'LICENSE'
+  workflow_dispatch:
+    inputs:
+      run_e2e:
+        description: 'Run E2E tests'
+        required: false
+        default: true
+        type: boolean
+
+# 🔒 Разрешения (минимальные для безопасности)
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+# 🌍 Environment variables
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "latest"
+  NODE_VERSION: "22"  
+  PNPM_VERSION: "latest"
+
+# 🧪 Jobs
+jobs:
+  # 📋 Changes Detection (оптимизация - пропускаем ненужные тесты)
+  changes:
+    name: 🔍 Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.changes.outputs.backend }}
+      frontend: ${{ steps.changes.outputs.frontend }}
+      docker: ${{ steps.changes.outputs.docker }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Check for changes
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - 'docker-compose.yml'
+              - 'Makefile'
+              - '.github/workflows/ci.yml'
+            frontend:
+              - 'frontend/**'
+              - '.github/workflows/ci.yml'
+            docker:
+              - 'docker-compose.yml'
+              - 'ops/**'
+
+  # 🔧 Backend Tests (Full with services - Linux only)
+  backend-tests-linux:
+    name: 🔧 Backend Tests (Ubuntu + Services)
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: test_boilerplate
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+          
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: 🚀 Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: 💾 Install dependencies
+        working-directory: ./backend
+        run: uv sync --dev
+
+      - name: 🔍 Lint with ruff
+        working-directory: ./backend
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+          
+      - name: 🔍 Type check with mypy  
+        working-directory: ./backend
+        run: uv run mypy .
+        
+      - name: 🧪 Run unit tests (SQLite, no services)
+        working-directory: ./backend
+        env:
+          DJANGO_SETTINGS_MODULE: app.settings.local
+          DATABASE_URL: sqlite:///test.db
+          REDIS_URL: redis://localhost:6379/0
+        run: uv run pytest --maxfail=5
+
+
+  # ⚛️ Frontend Tests  
+  frontend-tests:
+    name: ⚛️ Frontend Tests
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [18, 20, 22]
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: 📋 Get pnpm store directory
+        working-directory: ./frontend
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: 💾 Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: 📋 Install dependencies
+        working-directory: ./frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: 🔍 Lint with ESLint
+        working-directory: ./frontend  
+        run: pnpm lint
+
+      - name: 🎨 Check formatting with Prettier
+        working-directory: ./frontend
+        run: pnpm format:check
+
+      - name: 🔍 Type check with TypeScript
+        working-directory: ./frontend
+        run: pnpm tsc --noEmit
+
+      - name: 🏗️ Build project
+        working-directory: ./frontend
+        run: pnpm build
+
+      - name: 🧪 Run unit tests
+        working-directory: ./frontend
+        run: pnpm test:run
+
+      - name: 📊 Generate coverage report
+        if: matrix.node-version == 22
+        working-directory: ./frontend
+        run: pnpm test:run --coverage
+
+      - name: 📤 Upload coverage to Codecov
+        if: matrix.node-version == 22
+        uses: codecov/codecov-action@v4
+        with:
+          directory: ./frontend/coverage
+          flags: frontend
+          name: frontend-coverage
+          fail_ci_if_error: false
+
+  # 🎭 End-to-End Tests
+  e2e-tests:
+    name: 🎭 E2E Tests
+    runs-on: ubuntu-latest
+    needs: [changes, backend-tests-linux, frontend-tests]
+    if: |
+      always() && 
+      (needs.backend-tests-linux.result == 'success' || needs.backend-tests-linux.result == 'skipped') &&
+      (needs.frontend-tests.result == 'success' || needs.frontend-tests.result == 'skipped') &&
+      (github.event.inputs.run_e2e == 'true' || github.event.inputs.run_e2e == '' || github.event_name != 'workflow_dispatch')
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: boilerplate
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: 📦 Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: 📋 Install backend dependencies
+        working-directory: ./backend
+        run: uv sync
+
+      - name: 📋 Install frontend dependencies  
+        working-directory: ./frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: 🗄️ Setup database
+        working-directory: ./backend
+        env:
+          DJANGO_SETTINGS_MODULE: app.settings.local
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/boilerplate
+          REDIS_URL: redis://localhost:6379/0
+        run: |
+          uv run python manage.py migrate
+          uv run python manage.py shell -c "
+          from django.contrib.auth import get_user_model;
+          User = get_user_model();
+          User.objects.create_superuser('admin', 'admin@example.com', 'admin123') if not User.objects.filter(username='admin').exists() else None
+          "
+
+      - name: 🏗️ Build frontend
+        working-directory: ./frontend
+        run: pnpm build
+
+      - name: 🎭 Install Playwright browsers
+        working-directory: ./frontend
+        run: pnpm playwright install --with-deps
+
+      - name: 🚀 Start backend server (background)
+        working-directory: ./backend
+        env:
+          DJANGO_SETTINGS_MODULE: app.settings.local
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/boilerplate
+          REDIS_URL: redis://localhost:6379/0
+        run: |
+          uv run python manage.py runserver 8000 &
+          echo $! > backend.pid
+          
+      - name: ⚙️ Start Celery worker (background)
+        working-directory: ./backend
+        env:
+          DJANGO_SETTINGS_MODULE: app.settings.local
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/boilerplate
+          REDIS_URL: redis://localhost:6379/0
+        run: |
+          uv run celery -A app worker --loglevel=error &
+          echo $! > celery.pid
+
+      - name: 🌐 Start frontend server (background)
+        working-directory: ./frontend
+        run: |
+          pnpm preview --port 5173 &
+          echo $! > frontend.pid
+
+      - name: ⏳ Wait for services to be ready
+        run: |
+          echo "🔍 Waiting for backend..."
+          for i in {1..30}; do
+            if curl -s http://localhost:8000/api/health/ > /dev/null; then
+              echo "✅ Backend is ready"
+              break
+            fi
+            sleep 2
+          done
+          
+          echo "🔍 Waiting for frontend..."
+          for i in {1..30}; do
+            if curl -s http://localhost:5173 > /dev/null; then
+              echo "✅ Frontend is ready"
+              break  
+            fi
+            sleep 2
+          done
+
+      - name: 🧪 Run Playwright tests
+        working-directory: ./frontend
+        run: pnpm e2e
+        env:
+          CI: true
+
+      - name: 📤 Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 7
+
+      - name: 🛑 Cleanup background processes
+        if: always()
+        run: |
+          [ -f backend/backend.pid ] && kill $(cat backend/backend.pid) || true
+          [ -f backend/celery.pid ] && kill $(cat backend/celery.pid) || true  
+          [ -f frontend/frontend.pid ] && kill $(cat frontend/frontend.pid) || true
+
+  # ✅ Success Summary
+  ci-success:
+    name: ✅ CI Success
+    runs-on: ubuntu-latest
+    needs: [changes, backend-tests-linux, frontend-tests, e2e-tests]
+    if: always()
+    
+    steps:
+      - name: 📊 Check results
+        run: |
+          echo "🔍 CI Results Summary:"
+          echo "Backend Linux: ${{ needs.backend-tests-linux.result }}"
+
+          echo "Frontend: ${{ needs.frontend-tests.result }}"  
+          echo "E2E: ${{ needs.e2e-tests.result }}"
+          
+          if [[ "${{ needs.backend-tests-linux.result }}" == "failure" ]] || \
+             [[ "${{ needs.frontend-tests.result }}" == "failure" ]] || \
+             [[ "${{ needs.e2e-tests.result }}" == "failure" ]]; then
+            echo "❌ CI Failed"
+            exit 1
+          else
+            echo "✅ CI Passed"
+          fi
+
+      - name: 🎉 Success notification
+        if: success()
+        run: |
+          echo "::notice title=CI Success::All tests passed! 🚀"
+
+      - name: 💬 PR Comment (on success)
+        if: success() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { owner, repo, number } = context.issue;
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: number,
+              body: `## ✅ CI Pipeline Passed!\n\n🎉 All checks completed successfully:\n- ✅ Backend tests\n- ✅ Frontend tests\n- ✅ E2E tests\n\nReady for review! 🚀`
+            });
+
+# 📝 АДАПТАЦИЯ ДЛЯ ВАШЕГО ПРОЕКТА:
+# 
+# 1. 🏷️ Название и события:
+#    - Измените 'name' на название вашего проекта
+#    - Настройте branches в on.push и on.pull_request
+#
+# 2. 📁 Пути и структура:
+#    - Обновите paths-ignore если изменили структуру
+#    - Измените working-directory если переименовали папки
+#
+# 3. 🔐 Переменные окружения:
+#    - Добавьте secrets в настройках репозитория
+#    - Обновите DATABASE_URL, REDIS_URL для ваших сервисов
+#    - Добавьте API ключи, токены если нужно
+#
+# 4. 🗄️ База данных:
+#    - Измените POSTGRES_DB на имя вашей БД
+#    - Обновите создание суперпользователя для E2E
+#
+# 5. 🧪 Тесты:
+#    - Добавьте дополнительные проверки (security, performance)
+#    - Настройте уведомления (Slack, Discord, email)
+#    - Добавьте деплой workflow для продакшена
+#
+# 6. 📊 Мониторинг:
+#    - Подключите Codecov для отчетов о покрытии
+#    - Добавьте badges в README.md
+#    - Настройте алерты при падении тестов

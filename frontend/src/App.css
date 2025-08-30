@@ -1,0 +1,10 @@
+/* Main App Styles */
+
+.app {
+  min-height: 100vh;
+}
+
+#root {
+  margin: 0;
+  padding: 0;
+}

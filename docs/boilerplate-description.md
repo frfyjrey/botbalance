@@ -1,17 +1,16 @@
-# 📄 1. boilerplate-description.md
+# 🏗️ Boilerplate Description
 
 ## 🎯 Цель
 
-Собрать минималистичный, но полный **boilerplate-проект** для будущих приложений:
+Создать **минималистичный**, но **строгий** boilerplate-проект для приложений с DRF-бэкендом и фронтендом на Vite + React + TypeScript.
 
-* Backend → Django + DRF + Celery (сразу с Redis и Postgres).
-* Frontend → Vite + React + TypeScript.
-* Интеграция через API с JWT аутентификацией.
-* CI/CD → базовый GitHub Actions (линтеры + тесты).
-* Dev experience → OrbStack (docker-compose для Postgres + Redis), Makefile, единый venv (через **uv**).
+### 📋 Проект сразу должен соответствовать установленным правилам:
 
-В этом boilerplate **нет бизнес-логики** (бота, ордеров и т.п.), только структура и “hello world” endpoints.
-Он должен быть универсальным для любого будущего проекта (например, botbalance).
+- **🔧 Бэкенд** → Django + DRF + Celery (с Redis и Postgres)
+- **⚛️ Фронтенд** → React + TS + Vite, архитектура FSD-lite, i18n JSON, TanStack Query  
+- **🛠️ Dev Experience** → OrbStack (docker-compose для Postgres + Redis), единое окружение Python (через uv), Makefile
+- **🚀 CI/CD** → GitHub Actions: линтеры, типы, тесты (юнит + e2e)
+- **☁️ Деплой** → Проект готов для последующего деплоя на GCP
 
 ---
 
@@ -19,109 +18,153 @@
 
 ```
 boilerplate/
-  backend/
-    app/
-      settings/
-        base.py
-        local.py
-        prod.py
-      api/             # DRF views (health, auth)
-      core/            # утилиты, сервисы
-      tasks/           # Celery tasks (echo, heartbeat)
-      urls.py
-      wsgi.py
-      asgi.py
-    manage.py
-    pyproject.toml / requirements.txt
-  frontend/
-    src/
-      pages/           # Login, Dashboard
-      lib/             # api.ts (fetch wrapper)
-    package.json
-    vite.config.ts
-  ops/
-    agent/             # журнал ИИ-агента
-  docker-compose.yml   # Postgres + Redis для локалки
-  Makefile             # dev/lint/test/migrate
-  .github/workflows/ci.yml
-  README.md
+├── backend/                        # 🔧 Django Backend
+│   ├── app/
+│   │   ├── settings/
+│   │   │   ├── base.py             # Общие настройки
+│   │   │   ├── local.py            # Локальная разработка
+│   │   │   └── prod.py             # Продакшн
+│   │   ├── api/                    # 🔗 DRF views (auth, health, tasks)
+│   │   ├── core/                   # 🛠️ Утилиты
+│   │   ├── tasks/                  # 📋 Celery tasks (echo, heartbeat)  
+│   │   ├── urls.py
+│   │   ├── wsgi.py
+│   │   └── asgi.py
+│   ├── manage.py
+│   └── pyproject.toml              # 📦 Python dependencies
+├── frontend/                       # ⚛️ React Frontend
+│   ├── src/
+│   │   ├── app/                    # 🚀 Инициализация приложения, routes.ts
+│   │   ├── shared/                 # 🔗 ui/, lib/, i18n/
+│   │   ├── entities/               # 📊 Бизнес-сущности
+│   │   ├── features/               # ✨ Фичи
+│   │   ├── pages/                  # 📄 Login, Dashboard
+│   │   └── widgets/                # 🧩 Виджеты
+│   ├── public/
+│   ├── package.json
+│   └── vite.config.ts              # ⚡ Vite конфигурация
+├── ops/
+│   └── agent/                      # 🤖 Журнал ИИ-агента
+├── docker-compose.yml              # 🐳 Postgres + Redis
+├── Makefile                        # 🛠️ Dev команды
+├── .github/workflows/ci.yml        # 🔄 CI/CD
+└── README.md                       # 📖 Документация
 ```
 
 ---
 
-## 🔙 Backend (Django + DRF + Celery)
+## 🔧 Backend
 
-* **Фреймворки**: Django, DRF, Celery, Redis, PostgreSQL.
-* **Аутентификация**: JWT (djangorestframework-simplejwt).
-* **Endpoints**:
+### 📚 Технологии
+- **Django + DRF** для API
+- **Celery + Redis** для фоновых задач  
+- **PostgreSQL** как основная БД
+- **JWT-аутентификация** (`djangorestframework-simplejwt`)
 
-  * `POST /api/auth/login` — выдача токена.
-  * `GET /api/health` — проверка DB/Redis.
-  * `GET /api/version` — версия API.
-  * `POST /api/tasks/echo` → создаёт Celery-задачу, возвращает task\_id.
-  * `GET /api/tasks/status?task_id=...` → статус задачи.
-* **Celery**:
+### 🔗 API Endpoints
 
-  * broker = Redis
-  * task example: echo (вернёт текст), heartbeat (пишет лог).
-* **Config**:
+| Метод | Endpoint | Описание |
+|-------|----------|----------|
+| `POST` | `/api/auth/login` | 🔐 Выдача токена |
+| `GET` | `/api/health` | 🏥 Проверка DB/Redis |
+| `GET` | `/api/version` | 📋 Версия API |
+| `POST` | `/api/tasks/echo` | 📝 Создать задачу |
+| `GET` | `/api/tasks/status?task_id=...` | 📊 Статус задачи |
 
-  * `base.py` — общие настройки.
-  * `local.py` — DEBUG, sqlite/postgres локально.
-  * `prod.py` — настройки для GCP (Cloud SQL + Upstash).
-* **ENV**:
+### ⚙️ Конфигурация
 
-  ```
-  DJANGO_SECRET_KEY=dev-secret
-  DATABASE_URL=postgresql://postgres:postgres@localhost:5432/boilerplate
-  REDIS_URL=redis://localhost:6379/0
-  ALLOWED_HOSTS=localhost,127.0.0.1
-  CORS_ALLOWED_ORIGINS=http://localhost:5173
-  ```
+| Файл | Назначение |
+|------|------------|
+| `base.py` | 🔧 Общие настройки |
+| `local.py` | 🛠️ DEBUG, локальная разработка |
+| `prod.py` | 🚀 Прод (Cloud SQL + Upstash) |
 
----
+### 🔐 Environment Variables
 
-## 🔙 Frontend (Vite + React + TS)
+```bash
+# Основные настройки
+DJANGO_SECRET_KEY=dev-secret
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/boilerplate
+REDIS_URL=redis://localhost:6379/0
 
-* **Фреймворки**: React, Vite, TypeScript.
-* **Страницы**:
-
-  * `Login` — форма логина, запрос к `/auth/login`.
-  * `Dashboard` — “Hello, user!”, запрос к `/health`.
-* **API клиент** (`lib/api.ts`):
-
-  * хранение токена в localStorage,
-  * axios/fetch wrapper,
-  * перехватчик ошибок (401 → logout).
-* **ENV**:
-
-  ```
-  VITE_API_BASE=http://localhost:8000
-  ```
+# Сеть и CORS
+ALLOWED_HOSTS=localhost,127.0.0.1
+CORS_ALLOWED_ORIGINS=http://localhost:5173
+```
 
 ---
 
-## 🛠 Dev Experience
+## ⚛️ Frontend
 
-* **OrbStack/docker-compose**: поднимаем Postgres и Redis.
-* **uv**: единое окружение для Python.
-* **Makefile**:
+### 📚 Технологии
+- **React + TypeScript + Vite** — основной стек
+- **Архитектура FSD-lite** — `shared/`, `entities/`, `features/`, `widgets/`, `pages/`, `app/`
+- **I18n** — все строки в JSON файлах
+- **UI Framework** — Tailwind CSS + shadcn/ui принципы
 
-  * `make dev` → backend (uv run), worker (celery), frontend (vite).
-  * `make lint` → ruff, black, isort, mypy (backend), eslint, tsc (frontend).
-  * `make test` → pytest, vitest.
-  * `make migrate` → миграции.
-* **CI (GitHub Actions)**:
+### 🗂️ Управление состоянием
+- **TanStack Query** — для серверных данных  
+- **Zustand** — только для UI-состояния
+- **Routing** — централизованный `routes.ts`
 
-  * Линтеры: ruff, mypy, eslint, tsc.
-  * Тесты: pytest (бэк), vitest (фронт).
-  * Сервис Postgres для тестов.
+### 📄 Страницы
+
+| Страница | Описание | Функции |
+|----------|----------|---------|
+| **Login** | 🔐 Форма входа | Запрос к API, JWT токены |
+| **Dashboard** | 📊 Главная панель | Health-check, статус системы |
+
+---
+
+## 🛠️ Dev Experience
+
+### 🐳 Окружение разработки
+- **OrbStack/docker-compose** — для Postgres и Redis
+- **uv** — для Python-окружения
+- **Makefile** — единые команды для разработки
+
+### 🔧 Makefile команды
+
+| Команда | Описание |
+|---------|----------|
+| `make dev` | 🚀 Запуск api, worker, фронта |
+| `make lint` | 🧹 Линтеры для всего кода |
+| `make test` | 🧪 Все тесты (unit + e2e) |
+| `make migrate` | 📦 Миграции БД |
+
+### 🔄 CI/CD (GitHub Actions)
+
+#### 📋 Проверки при каждом PR:
+- **🧹 Линтеры:** `ruff`, `mypy`, `eslint`, `prettier`, `tsc`
+- **🧪 Тесты:** `pytest`, `vitest` 
+- **🎭 E2E:** `playwright` smoke-тесты
+
+> **⚠️ Важно:** Merge PR возможен только при **зелёных проверках**
 
 ---
 
 ## 🚦 Definition of Done
 
-* Локально: `make dev` поднимает всё → можно открыть фронт, залогиниться, увидеть Dashboard и health-check.
-* CI зелёный: линтеры + тесты проходят.
-* Celery таски работают: `POST /api/tasks/echo` возвращает результат через status API.
-* Всё описано в `README.md`.
+### ✅ Критерии готовности:
+
+1. **🚀 Локальный запуск**
+   - `make dev` поднимает окружение локально (api, worker, фронт)
+
+2. **🔐 Аутентификация** 
+   - Логин работает через API
+   - Dashboard показывает health статус
+
+3. **📋 Фоновые задачи**
+   - Celery-задачи выполняются и проверяются через API
+
+4. **✅ CI/CD**
+   - CI зелёный (линтеры, тесты, e2e)
+
+5. **⚛️ Frontend соответствие**
+   - FSD-lite архитектура ✓
+   - i18n JSON ✓ 
+   - TanStack Query ✓
+   - shadcn/ui принципы ✓
+
+6. **📖 Документация**
+   - README.md содержит инструкции по запуску
