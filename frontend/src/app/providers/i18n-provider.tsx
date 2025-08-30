@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { I18nextProvider } from 'react-i18next';
-import { i18n } from '@shared/lib';
+import i18n from '@shared/lib/i18n';
 
 interface I18nProviderProps {
   children: ReactNode;
