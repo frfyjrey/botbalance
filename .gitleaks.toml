@@ -88,8 +88,9 @@ tags = ["django", "secret-key"]
 # regex = '''your-api-pattern-here'''
 # tags = ["api", "custom"]
 
-# Глобальные исключения по расширениям файлов
-[allowlist.regexTarget = "filename"]
+# Глобальные исключения по расширениям файлов  
+[[allowlist]]
+regexTarget = "filename"
 regexes = [
     '''.*\.lock$''',    # Lock файлы (package-lock.json, pnpm-lock.yaml)
     '''.*\.log$''',     # Log файлы

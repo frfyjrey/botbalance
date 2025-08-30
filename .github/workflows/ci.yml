@@ -28,6 +28,7 @@ on:
       - 'LICENSE'
   pull_request:
     branches: [ main ]
+    types: [opened, synchronize, reopened]
     paths-ignore:
       - '*.md'
       - 'docs/**'
@@ -50,9 +51,9 @@ permissions:
 # 🌍 Environment variables
 env:
   PYTHON_VERSION: "3.12"
-  UV_VERSION: "0.5.10"
-  NODE_VERSION: "22"
-  PNPM_VERSION: "10"
+  UV_VERSION: "latest"
+  NODE_VERSION: "22"  
+  PNPM_VERSION: "latest"
 
 # 🧪 Jobs
 jobs:
