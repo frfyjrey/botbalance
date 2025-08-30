@@ -2,11 +2,17 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient, tokenManager } from '@shared/lib/api';
 import { useAuthStore } from '@shared/lib/store';
 import { QUERY_KEYS } from '@shared/config/constants';
-import type { LoginRequest, LoginResponse } from '@shared/config/types';
+import type {
+  LoginRequest,
+  LoginResponse,
+  AuthState,
+} from '@shared/config/types';
 
 // Query hooks
 export const useUserProfile = () => {
-  const isAuthenticated = useAuthStore(state => state.isAuthenticated);
+  const isAuthenticated = useAuthStore(
+    (state: AuthState) => state.isAuthenticated,
+  );
 
   return useQuery({
     queryKey: [QUERY_KEYS.USER, 'profile'],

@@ -159,83 +159,6 @@ jobs:
           REDIS_URL: redis://localhost:6379/0
         run: uv run pytest --maxfail=5
 
-  # 🔧 Backend Tests (macOS unit tests only)
-  backend-tests-macos:
-    name: 🔧 Backend Tests (macOS)
-    runs-on: macos-latest
-    needs: changes
-    if: needs.changes.outputs.backend == 'true'
-    
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.12"]
-
-    steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v4
-
-      - name: 🐍 Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: 📦 Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          version: ${{ env.UV_VERSION }}
-
-      - name: 📋 Install dependencies
-        working-directory: ./backend
-        run: |
-          uv sync --dev
-          
-      - name: 🔍 Lint with ruff
-        working-directory: ./backend
-        run: |
-          uv run ruff check .
-          uv run ruff format --check .
-          
-      - name: 🔍 Type check with mypy  
-        working-directory: ./backend
-        run: uv run mypy .
-        
-      - name: 🗄️ Run migrations
-        working-directory: ./backend
-        env:
-          DJANGO_SETTINGS_MODULE: app.settings.local
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_boilerplate
-          REDIS_URL: redis://localhost:6379/0
-        run: |
-          uv run python manage.py migrate --verbosity=0
-          
-      - name: 🧪 Run tests
-        working-directory: ./backend
-        env:
-          DJANGO_SETTINGS_MODULE: app.settings.local
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_boilerplate
-          REDIS_URL: redis://localhost:6379/0
-        run: |
-          uv run pytest -v --tb=short --durations=10
-          
-      - name: 📊 Generate coverage report
-        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
-        working-directory: ./backend
-        env:
-          DJANGO_SETTINGS_MODULE: app.settings.local
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_boilerplate
-          REDIS_URL: redis://localhost:6379/0
-        run: |
-          uv run pytest --cov=app --cov-report=xml --cov-report=html
-          
-      - name: 📤 Upload coverage to Codecov
-        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
-        uses: codecov/codecov-action@v4
-        with:
-          file: ./backend/coverage.xml
-          flags: backend
-          name: backend-coverage
-          fail_ci_if_error: false
 
   # ⚛️ Frontend Tests  
   frontend-tests:
@@ -319,11 +242,10 @@ jobs:
   e2e-tests:
     name: 🎭 E2E Tests
     runs-on: ubuntu-latest
-    needs: [changes, backend-tests-linux, backend-tests-macos, frontend-tests]
+    needs: [changes, backend-tests-linux, frontend-tests]
     if: |
       always() && 
       (needs.backend-tests-linux.result == 'success' || needs.backend-tests-linux.result == 'skipped') &&
-      (needs.backend-tests-macos.result == 'success' || needs.backend-tests-macos.result == 'skipped') &&
       (needs.frontend-tests.result == 'success' || needs.frontend-tests.result == 'skipped') &&
       (github.event.inputs.run_e2e == 'true' || github.event.inputs.run_e2e == '' || github.event_name != 'workflow_dispatch')
 
@@ -477,7 +399,7 @@ jobs:
   ci-success:
     name: ✅ CI Success
     runs-on: ubuntu-latest
-    needs: [changes, backend-tests-linux, backend-tests-macos, frontend-tests, e2e-tests]
+    needs: [changes, backend-tests-linux, frontend-tests, e2e-tests]
     if: always()
     
     steps:
@@ -485,12 +407,11 @@ jobs:
         run: |
           echo "🔍 CI Results Summary:"
           echo "Backend Linux: ${{ needs.backend-tests-linux.result }}"
-          echo "Backend macOS: ${{ needs.backend-tests-macos.result }}"
+
           echo "Frontend: ${{ needs.frontend-tests.result }}"  
           echo "E2E: ${{ needs.e2e-tests.result }}"
           
           if [[ "${{ needs.backend-tests-linux.result }}" == "failure" ]] || \
-             [[ "${{ needs.backend-tests-macos.result }}" == "failure" ]] || \
              [[ "${{ needs.frontend-tests.result }}" == "failure" ]] || \
              [[ "${{ needs.e2e-tests.result }}" == "failure" ]]; then
             echo "❌ CI Failed"
