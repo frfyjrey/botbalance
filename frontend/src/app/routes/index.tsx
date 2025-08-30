@@ -19,9 +19,7 @@ const PageLoader = () => (
 // Route components with Suspense
 // eslint-disable-next-line react-refresh/only-export-components
 const SuspenseWrapper = ({ children }: { children: React.ReactNode }) => (
-  <Suspense fallback={<PageLoader />}>
-    {children}
-  </Suspense>
+  <Suspense fallback={<PageLoader />}>{children}</Suspense>
 );
 
 export const router = createBrowserRouter([

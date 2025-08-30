@@ -178,6 +178,16 @@ test: ## Run all tests (backend + frontend)
 	@make frontend-test
 	@echo "$(GREEN)✅ All tests complete$(RESET)"
 
+# 🚀 Pre-commit Quality Checks  
+.PHONY: pre-commit
+pre-commit: ## Run comprehensive pre-commit checks (lint, format, test, build)
+	@echo "$(BLUE)🚀 Running pre-commit quality checks...$(RESET)"
+	@./pre-commit-check.sh
+	@echo "$(GREEN)✅ All pre-commit checks passed!$(RESET)"
+
+.PHONY: check
+check: pre-commit ## Alias for pre-commit
+
 .PHONY: backend-test
 backend-test: ## Run backend tests (pytest)
 	@echo "$(YELLOW)🔧 Running backend tests...$(RESET)"

@@ -1,6 +1,6 @@
 /**
  * Main Application Component
- * 
+ *
  * Features:
  * - FSD-lite Architecture
  * - React Router with protected routes

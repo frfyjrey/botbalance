@@ -3,10 +3,18 @@ import { ErrorBoundary } from 'react-error-boundary';
 import { useNavigate } from 'react-router-dom';
 import { LoginForm } from '@features/auth';
 
-const ErrorFallback = ({ error, resetErrorBoundary }: { error: Error; resetErrorBoundary: () => void }) => (
+const ErrorFallback = ({
+  error,
+  resetErrorBoundary,
+}: {
+  error: Error;
+  resetErrorBoundary: () => void;
+}) => (
   <div className="flex items-center justify-center min-h-screen">
     <div className="text-center">
-      <h2 className="text-xl font-semibold text-red-600 mb-2">Something went wrong</h2>
+      <h2 className="text-xl font-semibold text-red-600 mb-2">
+        Something went wrong
+      </h2>
       <p className="text-gray-600 mb-4">{error?.message}</p>
       <button
         onClick={resetErrorBoundary}

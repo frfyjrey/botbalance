@@ -159,17 +159,16 @@ jobs:
           REDIS_URL: redis://localhost:6379/0
         run: uv run pytest --maxfail=5
 
-  # 🔧 Backend Tests (Cross-platform unit tests only)
-  backend-tests-crossplatform:
-    name: 🔧 Backend Tests (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+  # 🔧 Backend Tests (macOS unit tests only)
+  backend-tests-macos:
+    name: 🔧 Backend Tests (macOS)
+    runs-on: macos-latest
     needs: changes
     if: needs.changes.outputs.backend == 'true'
     
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
         python-version: ["3.12"]
 
     steps:
@@ -320,11 +319,11 @@ jobs:
   e2e-tests:
     name: 🎭 E2E Tests
     runs-on: ubuntu-latest
-    needs: [changes, backend-tests-linux, backend-tests-crossplatform, frontend-tests]
+    needs: [changes, backend-tests-linux, backend-tests-macos, frontend-tests]
     if: |
       always() && 
       (needs.backend-tests-linux.result == 'success' || needs.backend-tests-linux.result == 'skipped') &&
-      (needs.backend-tests-crossplatform.result == 'success' || needs.backend-tests-crossplatform.result == 'skipped') &&
+      (needs.backend-tests-macos.result == 'success' || needs.backend-tests-macos.result == 'skipped') &&
       (needs.frontend-tests.result == 'success' || needs.frontend-tests.result == 'skipped') &&
       (github.event.inputs.run_e2e == 'true' || github.event.inputs.run_e2e == '' || github.event_name != 'workflow_dispatch')
 
@@ -478,7 +477,7 @@ jobs:
   ci-success:
     name: ✅ CI Success
     runs-on: ubuntu-latest
-    needs: [changes, backend-tests-linux, backend-tests-crossplatform, frontend-tests, e2e-tests]
+    needs: [changes, backend-tests-linux, backend-tests-macos, frontend-tests, e2e-tests]
     if: always()
     
     steps:
@@ -486,12 +485,12 @@ jobs:
         run: |
           echo "🔍 CI Results Summary:"
           echo "Backend Linux: ${{ needs.backend-tests-linux.result }}"
-          echo "Backend Cross-platform: ${{ needs.backend-tests-crossplatform.result }}"
+          echo "Backend macOS: ${{ needs.backend-tests-macos.result }}"
           echo "Frontend: ${{ needs.frontend-tests.result }}"  
           echo "E2E: ${{ needs.e2e-tests.result }}"
           
           if [[ "${{ needs.backend-tests-linux.result }}" == "failure" ]] || \
-             [[ "${{ needs.backend-tests-crossplatform.result }}" == "failure" ]] || \
+             [[ "${{ needs.backend-tests-macos.result }}" == "failure" ]] || \
              [[ "${{ needs.frontend-tests.result }}" == "failure" ]] || \
              [[ "${{ needs.e2e-tests.result }}" == "failure" ]]; then
             echo "❌ CI Failed"

@@ -5,7 +5,7 @@ import type { User } from '@shared/config/types';
 // Auth state hook
 export const useAuthState = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(
-    tokenManager.isAuthenticated()
+    tokenManager.isAuthenticated(),
   );
   const [user, setUser] = useState<User | null>(null);
 
@@ -30,7 +30,10 @@ export const useAuthState = () => {
     window.addEventListener('storage', handleStorageChange);
 
     return () => {
-      window.removeEventListener('auth:login', handleAuthLogin as EventListener);
+      window.removeEventListener(
+        'auth:login',
+        handleAuthLogin as EventListener,
+      );
       window.removeEventListener('auth:logout', handleAuthLogout);
       window.removeEventListener('storage', handleStorageChange);
     };
@@ -50,5 +53,9 @@ export const getUserDisplayName = (user: User): string => {
 export const getUserInitials = (user: User): string => {
   const displayName = getUserDisplayName(user);
   const names = displayName.split(' ');
-  return names.map(name => name[0]).join('').toUpperCase().slice(0, 2);
+  return names
+    .map(name => name[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
 };

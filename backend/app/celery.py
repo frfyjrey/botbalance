@@ -3,17 +3,17 @@ Celery configuration for boilerplate project.
 """
 
 import os
+
 from celery import Celery
-from django.conf import settings
 
 # Set the default Django settings module for the 'celery' program.
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'app.settings.local')
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "app.settings.local")
 
-app = Celery('boilerplate')
+app = Celery("boilerplate")
 
 # Using a string here means the worker doesn't have to serialize
 # the configuration object to child processes.
-app.config_from_object('django.conf:settings', namespace='CELERY')
+app.config_from_object("django.conf:settings", namespace="CELERY")
 
 # Load task modules from all registered Django apps.
 app.autodiscover_tasks()
@@ -22,13 +22,14 @@ app.autodiscover_tasks()
 @app.task(bind=True, ignore_result=True)
 def debug_task(self):
     """Debug task for testing Celery setup."""
-    print(f'Request: {self.request!r}')
-    
+    print(f"Request: {self.request!r}")
+
 
 @app.task
 def heartbeat():
     """Simple heartbeat task for health checks."""
     import logging
+
     logger = logging.getLogger(__name__)
     logger.info("Celery heartbeat - system is alive")
     return {"status": "alive", "message": "Celery worker is running"}

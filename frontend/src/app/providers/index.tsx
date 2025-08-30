@@ -9,9 +9,7 @@ interface AppProvidersProps {
 export const AppProviders = ({ children }: AppProvidersProps) => {
   return (
     <I18nProvider>
-      <QueryProvider>
-        {children}
-      </QueryProvider>
+      <QueryProvider>{children}</QueryProvider>
     </I18nProvider>
   );
 };

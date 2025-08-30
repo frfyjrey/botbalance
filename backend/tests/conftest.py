@@ -15,7 +15,7 @@ def client():
     return Client()
 
 
-@pytest.fixture 
+@pytest.fixture
 def api_client():
     """DRF API client."""
     return APIClient()
@@ -25,9 +25,7 @@ def api_client():
 def user():
     """Create a test user."""
     return User.objects.create_user(
-        username='testuser',
-        email='test@example.com',
-        password='testpass123'
+        username="testuser", email="test@example.com", password="testpass123"
     )
 
 
@@ -35,9 +33,7 @@ def user():
 def admin_user():
     """Create a test admin user."""
     return User.objects.create_superuser(
-        username='admin',
-        email='admin@example.com',
-        password='admin123'
+        username="admin", email="admin@example.com", password="admin123"
     )
 
 
@@ -46,8 +42,8 @@ def jwt_tokens(user):
     """Generate JWT tokens for a user."""
     refresh = RefreshToken.for_user(user)
     return {
-        'refresh': str(refresh),
-        'access': str(refresh.access_token),
+        "refresh": str(refresh),
+        "access": str(refresh.access_token),
     }
 
 
@@ -62,6 +58,7 @@ def authenticated_api_client(api_client, jwt_tokens):
 def celery_app():
     """Celery app fixture."""
     from app.celery import app
+
     return app
 
 

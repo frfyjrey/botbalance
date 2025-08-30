@@ -135,7 +135,8 @@ export interface FormState<T = Record<string, unknown>> {
 
 // Utility types
 export type Optional<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
-export type RequireOnly<T, K extends keyof T> = Pick<T, K> & Partial<Omit<T, K>>;
+export type RequireOnly<T, K extends keyof T> = Pick<T, K> &
+  Partial<Omit<T, K>>;
 export type Prettify<T> = { [K in keyof T]: T[K] } & {};
 
 // Component prop types

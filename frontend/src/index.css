@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 /* GitHub Primer Design System Colors */
 :root {
@@ -148,27 +148,29 @@
   body {
     background-color: rgb(var(--background));
     color: rgb(var(--foreground));
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+    font-family:
+      -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica,
+      Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
-  
+
   /* GitHub-style scrollbars */
   ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
-  
+
   ::-webkit-scrollbar-track {
     background: rgb(var(--canvas-subtle));
   }
-  
+
   ::-webkit-scrollbar-thumb {
     background: rgb(var(--fg-muted));
     border-radius: 4px;
   }
-  
+
   ::-webkit-scrollbar-thumb:hover {
     background: rgb(var(--fg-default));
   }

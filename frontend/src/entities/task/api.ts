@@ -32,15 +32,18 @@ export const useCreateHeartbeatTask = () => {
 };
 
 // Task status query
-export const useTaskStatus = (taskId: string | null, options?: { 
-  enabled?: boolean;
-  refetchInterval?: number;
-}) => {
+export const useTaskStatus = (
+  taskId: string | null,
+  options?: {
+    enabled?: boolean;
+    refetchInterval?: number;
+  },
+) => {
   return useQuery({
     queryKey: [QUERY_KEYS.TASK_STATUS, taskId],
     queryFn: () => apiClient.getTaskStatus(taskId!),
-    enabled: !!taskId && (options?.enabled !== false),
-    refetchInterval: (query) => {
+    enabled: !!taskId && options?.enabled !== false,
+    refetchInterval: query => {
       // Stop polling if task is complete
       const data = query.state.data as TaskStatusResponse | undefined;
       if (data?.task?.ready) {
@@ -60,7 +63,9 @@ export const useTaskPolling = (taskId: string | null) => {
 
   const isComplete = (data as TaskStatusResponse)?.task?.ready || false;
   const isSuccess = (data as TaskStatusResponse)?.task?.successful || false;
-  const hasError = (data as TaskStatusResponse)?.status === 'error' || (data as TaskStatusResponse)?.task?.state === 'FAILURE';
+  const hasError =
+    (data as TaskStatusResponse)?.status === 'error' ||
+    (data as TaskStatusResponse)?.task?.state === 'FAILURE';
 
   return {
     task: (data as TaskStatusResponse)?.task,

@@ -1,7 +1,7 @@
 /// <reference types="vitest" />
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import path from 'path'
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import path from 'path';
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -26,6 +26,8 @@ export default defineConfig({
     exclude: ['**/node_modules/**', '**/dist/**', '**/e2e/**'],
   },
   define: {
-    __API_BASE__: JSON.stringify(process.env.VITE_API_BASE || 'http://localhost:8000'),
+    __API_BASE__: JSON.stringify(
+      process.env.VITE_API_BASE || 'http://localhost:8000',
+    ),
   },
-})
+});

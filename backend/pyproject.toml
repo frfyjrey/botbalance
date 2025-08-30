@@ -40,6 +40,8 @@ packages = ["app"]
 [tool.ruff]
 target-version = "py311"
 line-length = 88
+
+[tool.ruff.lint]
 select = [
     "E",  # pycodestyle errors
     "W",  # pycodestyle warnings
@@ -53,11 +55,21 @@ ignore = [
     "E501",  # line too long, handled by black
     "B008",  # do not perform function calls in argument defaults
     "C901",  # too complex
+    "B904",  # raise ... from err (not always needed in tests)
 ]
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 "*/migrations/*" = ["E501"]
+"*/settings/*" = [
+    "F403",  # star imports (normal in Django settings)
+    "F405",  # may be undefined from star imports (normal in Django settings)
+    "E402",  # module level import not at top (normal in Django settings)
+]
+"tests/*" = [
+    "B011",  # assert False (acceptable in tests)
+    "B904",  # raise ... from err (not always needed in tests)
+]
 
 [tool.black]
 line-length = 88
@@ -95,6 +107,13 @@ warn_unused_ignores = true
 warn_redundant_casts = true
 warn_unused_configs = true
 plugins = ["mypy_django_plugin.main"]
+
+# Django settings files have special patterns that mypy doesn't understand well
+[[tool.mypy.overrides]]
+module = [
+    "app.settings.*",
+]
+ignore_errors = true
 
 [tool.django-stubs]
 django_settings_module = "app.settings.local"

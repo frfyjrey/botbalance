@@ -3,7 +3,8 @@
  */
 
 // API Configuration
-export const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+export const API_BASE =
+  import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
 // Storage Keys
 export const STORAGE_KEYS = {
@@ -27,11 +28,11 @@ export const API_ENDPOINTS = {
   // Auth
   LOGIN: '/api/auth/login/',
   PROFILE: '/api/auth/profile/',
-  
+
   // System
   HEALTH: '/api/health/',
   VERSION: '/api/version/',
-  
+
   // Tasks
   TASKS_ECHO: '/api/tasks/echo/',
   TASKS_HEARTBEAT: '/api/tasks/heartbeat/',

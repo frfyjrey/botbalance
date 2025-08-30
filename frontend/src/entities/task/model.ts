@@ -1,7 +1,7 @@
 import { TASK_STATES } from '@shared/config/constants';
 import type { TaskStatusResponse } from '@shared/config/types';
 
-export type TaskState = typeof TASK_STATES[keyof typeof TASK_STATES];
+export type TaskState = (typeof TASK_STATES)[keyof typeof TASK_STATES];
 
 // Task state utilities
 export const getTaskStateColor = (state: string): string => {
@@ -50,7 +50,9 @@ export const isTaskSuccessful = (task: TaskStatusResponse['task']): boolean => {
   return task?.successful || false;
 };
 
-export const getTaskProgress = (task: TaskStatusResponse['task']): {
+export const getTaskProgress = (
+  task: TaskStatusResponse['task'],
+): {
   current: number;
   total: number;
   percentage: number;
@@ -70,10 +72,10 @@ export const formatTaskResult = (result: unknown): string => {
   if (typeof result === 'string') {
     return result;
   }
-  
+
   if (typeof result === 'object' && result !== null) {
     return JSON.stringify(result, null, 2);
   }
-  
+
   return String(result);
 };

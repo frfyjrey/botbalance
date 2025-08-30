@@ -45,14 +45,28 @@ export const LoginForm = ({ onSuccess, className }: LoginFormProps) => {
   const isLoading = login.isPending;
 
   return (
-    <div className={cn('flex items-center justify-center min-h-screen', className)} style={{ backgroundColor: 'rgb(var(--canvas-subtle))' }}>
+    <div
+      className={cn('flex items-center justify-center min-h-screen', className)}
+      style={{ backgroundColor: 'rgb(var(--canvas-subtle))' }}
+    >
       <div className="w-full max-w-sm">
         {/* GitHub-style logo/title area */}
         <div className="text-center mb-6">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center" style={{ backgroundColor: 'rgb(var(--fg-default))' }}>
-            <span className="text-2xl font-bold" style={{ color: 'rgb(var(--fg-onEmphasis))' }}>B</span>
+          <div
+            className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center"
+            style={{ backgroundColor: 'rgb(var(--fg-default))' }}
+          >
+            <span
+              className="text-2xl font-bold"
+              style={{ color: 'rgb(var(--fg-onEmphasis))' }}
+            >
+              B
+            </span>
           </div>
-          <h1 className="text-2xl font-normal" style={{ color: 'rgb(var(--fg-default))' }}>
+          <h1
+            className="text-2xl font-normal"
+            style={{ color: 'rgb(var(--fg-default))' }}
+          >
             {t('login.title')}
           </h1>
         </div>
@@ -62,19 +76,28 @@ export const LoginForm = ({ onSuccess, className }: LoginFormProps) => {
           <form onSubmit={handleSubmit}>
             <div className="space-y-4">
               {login.error && (
-                <div className="px-3 py-2 rounded-md text-sm border" style={{ 
-                  backgroundColor: 'rgb(var(--alert-error-bg))',
-                  borderColor: 'rgb(var(--alert-error-border))',
-                  color: 'rgb(var(--fg-default))'
-                }}>
-                  {(login.error && typeof login.error === 'object' && 'message' in login.error 
-                    ? (login.error as { message: string }).message 
-                    : t('authentication_failed'))}
+                <div
+                  className="px-3 py-2 rounded-md text-sm border"
+                  style={{
+                    backgroundColor: 'rgb(var(--alert-error-bg))',
+                    borderColor: 'rgb(var(--alert-error-border))',
+                    color: 'rgb(var(--fg-default))',
+                  }}
+                >
+                  {login.error &&
+                  typeof login.error === 'object' &&
+                  'message' in login.error
+                    ? (login.error as { message: string }).message
+                    : t('authentication_failed')}
                 </div>
               )}
 
               <div className="space-y-1">
-                <Label htmlFor="username" className="block text-sm font-medium" style={{ color: 'rgb(var(--fg-default))' }}>
+                <Label
+                  htmlFor="username"
+                  className="block text-sm font-medium"
+                  style={{ color: 'rgb(var(--fg-default))' }}
+                >
                   {t('login.username')}
                 </Label>
                 <Input
@@ -91,7 +114,11 @@ export const LoginForm = ({ onSuccess, className }: LoginFormProps) => {
               </div>
 
               <div className="space-y-1">
-                <Label htmlFor="password" className="block text-sm font-medium" style={{ color: 'rgb(var(--fg-default))' }}>
+                <Label
+                  htmlFor="password"
+                  className="block text-sm font-medium"
+                  style={{ color: 'rgb(var(--fg-default))' }}
+                >
                   {t('login.password')}
                 </Label>
                 <Input
@@ -107,9 +134,9 @@ export const LoginForm = ({ onSuccess, className }: LoginFormProps) => {
                 />
               </div>
 
-              <Button 
-                type="submit" 
-                disabled={isLoading} 
+              <Button
+                type="submit"
+                disabled={isLoading}
                 className="btn-github btn-github-primary w-full py-2.5 mt-4"
               >
                 {isLoading ? t('login.signing_in') : t('login.sign_in')}
@@ -118,12 +145,26 @@ export const LoginForm = ({ onSuccess, className }: LoginFormProps) => {
           </form>
 
           {/* Demo credentials */}
-          <div className="mt-6 pt-4" style={{ borderTop: '1px solid rgb(var(--border))' }}>
-            <div className="text-xs text-center space-y-1" style={{ color: 'rgb(var(--fg-muted))' }}>
+          <div
+            className="mt-6 pt-4"
+            style={{ borderTop: '1px solid rgb(var(--border))' }}
+          >
+            <div
+              className="text-xs text-center space-y-1"
+              style={{ color: 'rgb(var(--fg-muted))' }}
+            >
               <p className="font-medium">{t('login.demo_credentials')}</p>
-              <div className="p-2 rounded text-left font-mono" style={{ backgroundColor: 'rgb(var(--canvas-subtle))' }}>
-                <div><strong>{t('login.demo_username')}</strong> {t('login.admin')}</div>
-                <div><strong>{t('login.demo_password')}</strong> {t('login.admin123')}</div>
+              <div
+                className="p-2 rounded text-left font-mono"
+                style={{ backgroundColor: 'rgb(var(--canvas-subtle))' }}
+              >
+                <div>
+                  <strong>{t('login.demo_username')}</strong> {t('login.admin')}
+                </div>
+                <div>
+                  <strong>{t('login.demo_password')}</strong>{' '}
+                  {t('login.admin123')}
+                </div>
               </div>
             </div>
           </div>

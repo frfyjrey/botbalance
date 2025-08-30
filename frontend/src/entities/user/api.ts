@@ -6,8 +6,8 @@ import type { LoginRequest, LoginResponse } from '@shared/config/types';
 
 // Query hooks
 export const useUserProfile = () => {
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  
+  const isAuthenticated = useAuthStore(state => state.isAuthenticated);
+
   return useQuery({
     queryKey: [QUERY_KEYS.USER, 'profile'],
     queryFn: async () => {
@@ -15,13 +15,18 @@ export const useUserProfile = () => {
       if (!tokenManager.isAuthenticated()) {
         throw new Error('User not authenticated');
       }
-      
+
       try {
         const response = await apiClient.getUserProfile();
         return response.data || null; // Ensure we never return undefined
       } catch (error) {
         // If it's an auth error, clear tokens and update store
-        if (error && typeof error === 'object' && 'status' in error && (error as { status: number }).status === 401) {
+        if (
+          error &&
+          typeof error === 'object' &&
+          'status' in error &&
+          (error as { status: number }).status === 401
+        ) {
           tokenManager.clearTokens();
           useAuthStore.getState().setIsAuthenticated(false);
         }
@@ -34,7 +39,7 @@ export const useUserProfile = () => {
   });
 };
 
-// Mutation hooks  
+// Mutation hooks
 export const useLogin = () => {
   const queryClient = useQueryClient();
 
@@ -44,15 +49,17 @@ export const useLogin = () => {
       if (data.status === 'success' && data.user) {
         // Update auth store immediately
         useAuthStore.getState().setIsAuthenticated(true);
-        
+
         // Cache user data
         queryClient.setQueryData([QUERY_KEYS.USER, 'profile'], data.user);
-        
+
         // Trigger a global event for auth state change
-        window.dispatchEvent(new CustomEvent('auth:login', { detail: data.user }));
+        window.dispatchEvent(
+          new CustomEvent('auth:login', { detail: data.user }),
+        );
       }
     },
-    onError: (error) => {
+    onError: error => {
       console.error('Login failed:', error);
       // Make sure auth state is false on login failure
       useAuthStore.getState().setIsAuthenticated(false);
@@ -68,10 +75,10 @@ export const useLogout = () => {
     onSuccess: () => {
       // Update auth store immediately
       useAuthStore.getState().setIsAuthenticated(false);
-      
+
       // Clear all cached data
       queryClient.clear();
-      
+
       // Trigger a global event for auth state change
       window.dispatchEvent(new CustomEvent('auth:logout'));
     },
