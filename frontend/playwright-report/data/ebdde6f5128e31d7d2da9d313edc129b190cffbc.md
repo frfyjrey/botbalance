@@ -1,0 +1,78 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - generic [ref=e6]:
+        - generic [ref=e7]:
+          - generic [ref=e9]: B
+          - generic [ref=e10]:
+            - heading "Привет, admin! 👋" [level=1] [ref=e11]
+            - paragraph [ref=e12]: Добро пожаловать в панель управления Boilerplate
+        - generic [ref=e13]:
+          - button "Авто" [ref=e14] [cursor=pointer]:
+            - img [ref=e15] [cursor=pointer]
+            - generic [ref=e17] [cursor=pointer]: Авто
+          - button "Выйти" [ref=e18] [cursor=pointer]:
+            - img [ref=e19] [cursor=pointer]
+            - generic [ref=e21] [cursor=pointer]: Выйти
+    - main [ref=e22]:
+      - generic [ref=e23]:
+        - generic [ref=e24]:
+          - heading "Информация о пользователе" [level=3] [ref=e26]
+          - generic [ref=e27]:
+            - generic [ref=e28]:
+              - generic [ref=e29]: "Имя пользователя:"
+              - generic [ref=e30]: admin
+            - generic [ref=e31]:
+              - generic [ref=e32]: "Email:"
+              - generic [ref=e33]: admin@example.com
+            - generic [ref=e34]:
+              - generic [ref=e35]: "Присоединился:"
+              - generic [ref=e36]: 8/30/2025
+        - generic [ref=e37]:
+          - heading "Состояние системы" [level=3] [ref=e39]
+          - generic [ref=e40]:
+            - generic [ref=e41]:
+              - generic [ref=e42]: "База данных:"
+              - generic [ref=e43]: healthy
+            - generic [ref=e44]:
+              - generic [ref=e45]: "Redis:"
+              - generic [ref=e46]: healthy
+            - generic [ref=e47]:
+              - generic [ref=e48]: "Celery:"
+              - generic [ref=e49]: healthy (1 воркеров)
+            - generic [ref=e50]:
+              - generic [ref=e51]: "Общее:"
+              - generic [ref=e52]: healthy
+        - generic [ref=e53]:
+          - heading "Информация о версии" [level=3] [ref=e55]
+          - generic [ref=e56]:
+            - generic [ref=e57]:
+              - generic [ref=e58]: "Приложение:"
+              - generic [ref=e59]: Boilerplate API v1.0.0
+            - generic [ref=e60]:
+              - generic [ref=e61]: "Окружение:"
+              - generic [ref=e62]: development
+            - generic [ref=e63]:
+              - generic [ref=e64]: "Описание:"
+              - generic [ref=e65]: Django + DRF + Celery boilerplate API
+        - generic [ref=e66]:
+          - heading "Демо Celery задач" [level=3] [ref=e68]
+          - generic [ref=e69]:
+            - button "Создать Echo задачу" [ref=e70] [cursor=pointer]
+            - generic [ref=e71]:
+              - 'heading "ID задачи: 027520ff-d364-450f-953f-cd0debe437a5" [level=4] [ref=e72]'
+              - generic [ref=e73]:
+                - generic [ref=e74]:
+                  - generic [ref=e75]: "Состояние:"
+                  - generic [ref=e76]: Success
+                - generic [ref=e77]:
+                  - generic [ref=e78]: "Результат:"
+                  - generic [ref=e79]: "{ \"message\": \"Hello from Dashboard!\", \"task_id\": \"027520ff-d364-450f-953f-cd0debe437a5\", \"delay_requested\": 2, \"execution_time\": 2, \"status\": \"completed\", \"timestamp\": 1756538354 }"
+  - generic [ref=e80]:
+    - img [ref=e82]
+    - button "Open Tanstack query devtools" [ref=e150] [cursor=pointer]:
+      - img [ref=e151] [cursor=pointer]
+```

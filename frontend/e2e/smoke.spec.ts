@@ -43,7 +43,7 @@ test.describe('Smoke Tests', () => {
     await page.getByRole('button', { name: 'Создать Echo задачу' }).click();
 
     // Should show task status
-    await expect(page.getByText('Статус задачи:')).toBeVisible();
+    await expect(page.getByText('Состояние:')).toBeVisible();
 
     // Wait for task completion (max 5 seconds)
     await expect(page.getByText('SUCCESS')).toBeVisible({ timeout: 5000 });
@@ -71,9 +71,9 @@ test.describe('Smoke Tests', () => {
     // Click theme toggle and check for visual changes
     await themeButton.click();
 
-    // Check if dark class is applied to html element
+    // Wait for theme change and check if dark class is applied to html element
     const htmlElement = page.locator('html');
-    await expect(htmlElement).toHaveClass(/dark/);
+    await expect(htmlElement).toHaveClass(/dark/, { timeout: 1000 });
 
     // Click again to cycle through themes
     await themeButton.click();

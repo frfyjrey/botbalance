@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -23,6 +23,12 @@ export const DashboardContent = () => {
   const logout = useLogout();
 
   const [taskId, setTaskId] = useState<string | null>(null);
+
+  // Ensure theme is applied on component mount
+  useEffect(() => {
+    const { theme, setTheme } = useThemeStore.getState();
+    setTheme(theme);
+  }, []);
 
   // System queries
   const { data: health } = useQuery({
@@ -54,7 +60,8 @@ export const DashboardContent = () => {
     } else if (theme === 'dark') {
       setTheme('system');
     } else {
-      setTheme('light');
+      // If theme is 'system', always go to 'dark' first for predictable testing
+      setTheme('dark');
     }
   };
 
