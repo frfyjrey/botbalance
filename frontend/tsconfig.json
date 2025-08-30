@@ -6,7 +6,7 @@
     "module": "ESNext",
     "skipLibCheck": true,
 
-    /* Bundler mode с диагностикой */
+    /* Bundler mode */
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
@@ -14,34 +14,22 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "resolveJsonModule": true,
-    "allowSyntheticDefaultImports": true,
-    "esModuleInterop": true,
 
-    /* Path aliases - абсолютные пути для CI */
-    "baseUrl": "./src",
+    /* Path aliases - синхронизированы с vite.config.ts */
+    "baseUrl": ".",
     "paths": {
-      "@shared/*": ["./shared/*"],
-      "@entities/*": ["./entities/*"], 
-      "@features/*": ["./features/*"],
-      "@pages/*": ["./pages/*"],
-      "@app/*": ["./app/*"]
+      "@shared/*": ["./src/shared/*"],
+      "@entities/*": ["./src/entities/*"],
+      "@features/*": ["./src/features/*"],
+      "@pages/*": ["./src/pages/*"],
+      "@app/*": ["./src/app/*"]
     },
 
     /* Linting */
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "erasableSyntaxOnly": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true
+    "noFallthroughCasesInSwitch": true
   },
-  "include": [
-    "src/**/*",
-    "vite.config.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "e2e"
-  ]
+  "include": ["src"]
 }
