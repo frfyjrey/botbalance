@@ -10,10 +10,7 @@ export default tseslint.config([
   },
   {
     files: ['**/*.{ts,tsx}'],
-    extends: [
-      js.configs.recommended,
-      ...tseslint.configs.recommended,
-    ],
+    extends: [js.configs.recommended, ...tseslint.configs.recommended],
     plugins: {
       'react-hooks': reactHooks,
       'react-refresh': reactRefresh,
