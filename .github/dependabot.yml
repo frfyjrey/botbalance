@@ -1,0 +1,170 @@
+# 🤖 Dependabot Configuration
+# Автоматическое обновление зависимостей
+#
+# 📝 АДАПТАЦИЯ ДЛЯ НОВОГО ПРОЕКТА:
+#   1. Настройте расписание под ваши потребности
+#   2. Добавьте дополнительные экосистемы если нужно
+#   3. Настройте reviewers и assignees
+#   4. Добавьте лейблы для категоризации
+
+version: 2
+updates:
+  # 🐍 Python dependencies (uv/pip)
+  - package-ecosystem: "pip"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "backend"
+      - "python"
+    commit-message:
+      prefix: "⬆️"
+      include: "scope"
+    reviewers:
+      - "your-github-username" # ИЗМЕНИТЕ НА ВАШЕ ИМЯ
+    assignees:
+      - "your-github-username" # ИЗМЕНИТЕ НА ВАШЕ ИМЯ
+    # Группировка минорных обновлений
+    groups:
+      django-ecosystem:
+        patterns:
+          - "django*"
+          - "djangorestframework*"
+      testing:
+        patterns:
+          - "pytest*"
+          - "factory-boy"
+          - "faker"
+      dev-tools:
+        patterns:
+          - "ruff"
+          - "mypy"
+          - "black"
+    ignore:
+      # Игнорировать мажорные обновления для критичных зависимостей
+      - dependency-name: "django"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "psycopg2-binary"
+        update-types: ["version-update:semver-major"]
+
+  # 📦 Node.js dependencies (pnpm)
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"  
+      time: "10:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "frontend"
+      - "javascript"
+    commit-message:
+      prefix: "⬆️"
+      include: "scope"
+    reviewers:
+      - "your-github-username" # ИЗМЕНИТЕ НА ВАШЕ ИМЯ
+    assignees:
+      - "your-github-username" # ИЗМЕНИТЕ НА ВАШЕ ИМЯ
+    # Группировка связанных обновлений
+    groups:
+      react-ecosystem:
+        patterns:
+          - "react*"
+          - "@types/react*"
+      build-tools:
+        patterns:
+          - "vite*"
+          - "@vitejs/*"
+          - "typescript"
+      ui-framework:
+        patterns:
+          - "tailwindcss"
+          - "@tailwindcss/*"
+          - "@radix-ui/*"
+      testing:
+        patterns:
+          - "vitest*"
+          - "@testing-library/*"
+          - "playwright*"
+      linting:
+        patterns:
+          - "eslint*"
+          - "@eslint/*"
+          - "prettier"
+    ignore:
+      # Игнорировать мажорные обновления для критичных зависимостей
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+
+  # 🐳 Docker dependencies
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "11:00"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "🐳"
+
+  # 🔄 GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "08:00"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "ci"
+    commit-message:
+      prefix: "🔄"
+
+# 📝 НАСТРОЙКА ДЛЯ ВАШЕГО ПРОЕКТА:
+#
+# 1. 👤 Пользователи:
+#    - Замените "your-github-username" на ваше GitHub имя
+#    - Добавьте команду в reviewers и assignees
+#
+# 2. 📅 Расписание:
+#    - Настройте interval (daily/weekly/monthly)
+#    - Выберите подходящий день и время
+#    - Установите нужную timezone
+#
+# 3. 🏷️ Лейблы:
+#    - Создайте соответствующие лейблы в репозитории
+#    - Добавьте дополнительные лейблы по потребности
+#
+# 4. 📦 Группировка:
+#    - Настройте groups для логически связанных пакетов
+#    - Добавьте специфичные для проекта группы
+#
+# 5. 🚫 Игнорирование:
+#    - Добавьте в ignore пакеты с breaking changes
+#    - Настройте игнорирование по типам обновлений
+#
+# 6. 🎯 Лимиты:
+#    - Установите open-pull-requests-limit по потребности
+#    - Настройте milestone для важных обновлений
+#
+# 7. 🔐 Безопасность:
+#    - Dependabot автоматически создает PR для security updates
+#    - Настройте автомерж для безопасных minor/patch обновлений
+#
+# 8. 📊 Monitoring:
+#    - Следите за Insights > Dependency graph > Dependabot
+#    - Настройте уведомления для критичных обновлений

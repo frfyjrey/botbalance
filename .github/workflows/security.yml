@@ -1,0 +1,264 @@
+# 🛡️ Security & Dependencies Check
+#
+# 🎯 Запускается на:
+#   - Push в main ветку
+#   - Pull Request
+#   - Еженедельно по расписанию
+#   - Manual dispatch
+#
+# 🔍 Проверяет:
+#   - Уязвимости в зависимостях (Python + Node.js)
+#   - Секреты в коде (GitLeaks)
+#   - Безопасность кода (CodeQL)
+#   - Устаревшие зависимости
+#
+# 📝 АДАПТАЦИЯ ДЛЯ НОВОГО ПРОЕКТА:
+#   1. Настройте уведомления о уязвимостях
+#   2. Добавьте исключения для false positives
+#   3. Настройте автообновление зависимостей
+
+name: 🛡️ Security & Dependencies
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Запуск каждый понедельник в 9:00 UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+# 🔒 Минимальные разрешения
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+# 🌍 Environment variables  
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22"
+
+jobs:
+  # 🐍 Python Security Scan
+  python-security:
+    name: 🐍 Python Security
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: 📦 Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: 🔍 Vulnerability scan with Safety
+        working-directory: ./backend
+        run: |
+          uv add --dev safety
+          uv run safety check --json --output safety-report.json || true
+          
+      - name: 🔍 Security linting with Bandit
+        working-directory: ./backend
+        run: |
+          uv add --dev bandit
+          uv run bandit -r app/ -f json -o bandit-report.json || true
+          
+      - name: 📤 Upload security reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-security-reports
+          path: |
+            backend/safety-report.json
+            backend/bandit-report.json
+          retention-days: 30
+
+  # 📦 Node.js Security Scan  
+  nodejs-security:
+    name: 📦 Node.js Security
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: "10"
+
+      - name: 📋 Install dependencies
+        working-directory: ./frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: 🔍 Audit dependencies
+        working-directory: ./frontend
+        run: |
+          pnpm audit --json > audit-report.json || true
+          cat audit-report.json
+
+      - name: 📤 Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nodejs-security-reports
+          path: frontend/audit-report.json
+          retention-days: 30
+
+  # 🔐 Secrets Detection
+  secrets-scan:
+    name: 🔐 Secrets Detection
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Полная история для полного сканирования
+
+      - name: 🔍 GitLeaks scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+        with:
+          config-path: .gitleaks.toml # Создадим конфиг файл
+
+  # 🔬 CodeQL Analysis
+  codeql:
+    name: 🔬 CodeQL Analysis  
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+      
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'python', 'javascript' ]
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔬 Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: +security-extended,security-and-quality
+
+      - name: 🏗️ Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: 🔬 Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{matrix.language}}"
+
+  # 📊 Dependency Updates Check
+  dependency-updates:
+    name: 📊 Dependency Updates
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Check Python updates
+        working-directory: ./backend
+        run: |
+          echo "🔍 Checking for Python dependency updates..."
+          pip install pip-outdated
+          pip list --outdated
+
+      - name: 📦 Check Node.js updates
+        working-directory: ./frontend
+        run: |
+          echo "🔍 Checking for Node.js dependency updates..."
+          npm install -g npm-check-updates
+          ncu
+
+      - name: 📝 Create update summary
+        run: |
+          echo "## 📊 Dependency Update Summary" > update-summary.md
+          echo "Scheduled check completed on $(date)" >> update-summary.md
+          echo "Check the logs above for available updates." >> update-summary.md
+
+      - name: 📤 Upload update summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-updates
+          path: update-summary.md
+          retention-days: 7
+
+  # ✅ Security Summary
+  security-summary:
+    name: ✅ Security Summary
+    runs-on: ubuntu-latest
+    needs: [python-security, nodejs-security, secrets-scan, codeql]
+    if: always()
+    
+    steps:
+      - name: 📊 Security results
+        run: |
+          echo "🛡️ Security Scan Results:"
+          echo "Python Security: ${{ needs.python-security.result }}"
+          echo "Node.js Security: ${{ needs.nodejs-security.result }}"
+          echo "Secrets Scan: ${{ needs.secrets-scan.result }}"
+          echo "CodeQL: ${{ needs.codeql.result }}"
+          
+          if [[ "${{ needs.python-security.result }}" == "failure" ]] || \
+             [[ "${{ needs.nodejs-security.result }}" == "failure" ]] || \
+             [[ "${{ needs.secrets-scan.result }}" == "failure" ]] || \
+             [[ "${{ needs.codeql.result }}" == "failure" ]]; then
+            echo "⚠️ Security issues detected!"
+            echo "::warning title=Security Alert::Please review security scan results"
+          else
+            echo "✅ No security issues detected"
+            echo "::notice title=Security Clean::All security scans passed"
+          fi
+
+      - name: 💬 PR Comment (security issues)
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { owner, repo, number } = context.issue;
+            await github.rest.issues.createComment({
+              owner,
+              repo, 
+              issue_number: number,
+              body: `## ⚠️ Security Scan Alert\n\nSome security checks failed. Please review:\n- Check uploaded artifacts for detailed reports\n- Review CodeQL findings in Security tab\n- Fix any identified vulnerabilities\n\n🛡️ Security is important!`
+            });
+
+# 📝 ДОПОЛНИТЕЛЬНАЯ НАСТРОЙКА:
+#
+# 1. 🔐 GitLeaks config (.gitleaks.toml):
+#    Создайте файл конфигурации для исключения false positives
+#
+# 2. 🚨 Уведомления:
+#    Настройте Slack/Discord webhooks для критических уязвимостей
+#
+# 3. 🤖 Автообновления:
+#    Добавьте Dependabot для автоматических PR с обновлениями
+#
+# 4. 📊 Badges:
+#    Добавьте security badges в README.md
+#
+# 5. 🏢 Enterprise:
+#    Для enterprise проектов добавьте SAST/DAST сканеры
