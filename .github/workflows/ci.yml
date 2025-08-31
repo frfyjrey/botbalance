@@ -231,7 +231,7 @@ jobs:
 
       - name: 📤 Upload coverage to Codecov
         if: matrix.node-version == 22
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           directory: ./frontend/coverage
           flags: frontend
