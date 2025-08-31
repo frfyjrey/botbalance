@@ -16,7 +16,7 @@
 #   3. Настройте переменные окружения в secrets
 #   4. Добавьте дополнительные сервисы если нужно
 
-name: 🔄 CI Pipeline
+name: 🔄 BotBalance CI Pipeline
 
 on:
   push:
@@ -104,7 +104,7 @@ jobs:
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_USER: postgres
-          POSTGRES_DB: test_boilerplate
+          POSTGRES_DB: test_botbalance
         ports:
           - 5432:5432
         options: >-
@@ -154,7 +154,7 @@ jobs:
       - name: 🧪 Run unit tests (SQLite, no services)
         working-directory: ./backend
         env:
-          DJANGO_SETTINGS_MODULE: app.settings.local
+          DJANGO_SETTINGS_MODULE: botbalance.settings.local
           DATABASE_URL: sqlite:///test.db
           REDIS_URL: redis://localhost:6379/0
         run: uv run pytest --maxfail=5
@@ -255,7 +255,7 @@ jobs:
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_USER: postgres
-          POSTGRES_DB: boilerplate
+          POSTGRES_DB: botbalance
         ports:
           - 5432:5432
         options: >-
@@ -309,8 +309,8 @@ jobs:
       - name: 🗄️ Setup database
         working-directory: ./backend
         env:
-          DJANGO_SETTINGS_MODULE: app.settings.local
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/boilerplate
+          DJANGO_SETTINGS_MODULE: botbalance.settings.local
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/botbalance
           REDIS_URL: redis://localhost:6379/0
         run: |
           uv run python manage.py migrate
@@ -331,8 +331,8 @@ jobs:
       - name: 🚀 Start backend server (background)
         working-directory: ./backend
         env:
-          DJANGO_SETTINGS_MODULE: app.settings.local
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/boilerplate
+          DJANGO_SETTINGS_MODULE: botbalance.settings.local
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/botbalance
           REDIS_URL: redis://localhost:6379/0
         run: |
           uv run python manage.py runserver 8000 &
@@ -341,11 +341,11 @@ jobs:
       - name: ⚙️ Start Celery worker (background)
         working-directory: ./backend
         env:
-          DJANGO_SETTINGS_MODULE: app.settings.local
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/boilerplate
+          DJANGO_SETTINGS_MODULE: botbalance.settings.local
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/botbalance
           REDIS_URL: redis://localhost:6379/0
         run: |
-          uv run celery -A app worker --loglevel=error &
+          uv run celery -A botbalance worker --loglevel=error &
           echo $! > celery.pid
 
       - name: 🌐 Start frontend server (background)

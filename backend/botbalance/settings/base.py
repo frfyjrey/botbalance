@@ -1,5 +1,5 @@
 """
-Django settings for boilerplate project.
+Django settings for botbalance project.
 
 Base settings shared across all environments.
 """
@@ -43,9 +43,9 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "corsheaders",
     # Local apps
-    "app.api",
-    "app.core",
-    "app.tasks",
+    "botbalance.api",
+    "botbalance.core",
+    "botbalance.tasks",
 ]
 
 MIDDLEWARE = [
@@ -59,7 +59,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-ROOT_URLCONF = "app.urls"
+ROOT_URLCONF = "botbalance.urls"
 
 TEMPLATES = [
     {
@@ -76,7 +76,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = "app.wsgi.application"
+WSGI_APPLICATION = "botbalance.wsgi.application"
 
 
 # Database
@@ -85,7 +85,7 @@ WSGI_APPLICATION = "app.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.getenv("DB_NAME", "boilerplate"),
+        "NAME": os.getenv("DB_NAME", "botbalance"),
         "USER": os.getenv("DB_USER", "postgres"),
         "PASSWORD": os.getenv("DB_PASSWORD", "postgres"),
         "HOST": os.getenv("DB_HOST", "localhost"),

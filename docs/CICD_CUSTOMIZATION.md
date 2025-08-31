@@ -57,7 +57,7 @@ jobs:
 ```bash
 # Найти и заменить во всех workflow файлах
 find .github -name "*.yml" | xargs sed -i '' 's/app\.settings\.local/your_project.settings.local/g'
-find .github -name "*.yml" | xargs sed -i '' 's/boilerplate/your-project-name/g'
+find .github -name "*.yml" | xargs sed -i '' 's/botbalance/your-project-name/g'
 ```
 
 ### 2. Настройка Dependabot

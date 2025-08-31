@@ -9,7 +9,7 @@
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   Load Balancer │────│   Cloud Storage │    │   Cloud SQL     │
-│ (app.domain.com)│    │   (Frontend)    │    │ (PostgreSQL)    │
+│ (botbalance.domain.com)│    │   (Frontend)    │    │ (PostgreSQL)    │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
          │                       │                       │
          ▼                       │                       │
@@ -122,7 +122,7 @@ gsutil web set -m index.html -e index.html gs://your-app-frontend
 cat > cors.json << EOF
 [
   {
-    "origin": ["https://app.your-domain.com"],
+    "origin": ["https://botbalance.your-domain.com"],
     "method": ["GET", "POST", "PUT", "DELETE"],
     "responseHeader": ["Content-Type"],
     "maxAgeSeconds": 3600
@@ -254,7 +254,7 @@ GS_DEFAULT_ACL = 'publicRead'
 
 # CORS
 CORS_ALLOWED_ORIGINS = [
-    'https://app.your-domain.com',
+    'https://botbalance.your-domain.com',
     'https://your-domain.com',
 ]
 
@@ -418,7 +418,7 @@ gcloud compute forwarding-rules create your-app-https-rule \
 ```bash
 # Создать управляемый SSL сертификат
 gcloud compute ssl-certificates create your-ssl-cert \
-    --domains=your-domain.com,app.your-domain.com,api.your-domain.com \
+    --domains=your-domain.com,botbalance.your-domain.com,api.your-domain.com \
     --global
 ```
 
@@ -432,7 +432,7 @@ STATIC_IP=$(gcloud compute addresses describe your-app-ip --global --format="val
 
 echo "Настройте DNS записи:"
 echo "A record: your-domain.com -> $STATIC_IP"
-echo "A record: app.your-domain.com -> $STATIC_IP"  
+echo "A record: botbalance.your-domain.com -> $STATIC_IP"  
 echo "A record: api.your-domain.com -> $STATIC_IP"
 ```
 
@@ -612,6 +612,6 @@ gcloud sql instances patch your-app-db \
 **🎉 Поздравляем! Ваше приложение развернуто на GCP!**
 
 Доступ:
-- 🌐 **Frontend**: https://app.your-domain.com
+- 🌐 **Frontend**: https://botbalance.your-domain.com
 - 🔧 **API**: https://api.your-domain.com
 - 📊 **Monitoring**: Google Cloud Console

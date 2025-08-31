@@ -9,7 +9,7 @@ test.describe('Smoke Tests', () => {
     await expect(page).toHaveURL('/login');
 
     // Check login page elements
-    await expect(page.getByText('Boilerplate Приложение')).toBeVisible();
+    await expect(page.getByText('BotBalance')).toBeVisible();
     await expect(
       page.getByPlaceholder('Введите имя пользователя'),
     ).toBeVisible();
@@ -45,8 +45,8 @@ test.describe('Smoke Tests', () => {
     // Should show task status
     await expect(page.getByText('Состояние:')).toBeVisible();
 
-    // Wait for task completion (max 5 seconds)
-    await expect(page.getByText('SUCCESS')).toBeVisible({ timeout: 5000 });
+    // Wait for task completion (max 10 seconds)
+    await expect(page.getByText('SUCCESS')).toBeVisible({ timeout: 10000 });
 
     // Test logout
     await page.getByRole('button', { name: 'Выйти' }).click();

@@ -1,5 +1,5 @@
 """
-API Serializers for the boilerplate project.
+API Serializers for the botbalance project.
 """
 
 from django.contrib.auth import authenticate

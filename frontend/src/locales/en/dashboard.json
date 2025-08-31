@@ -1,6 +1,6 @@
 {
   "welcome": "Hello, {{username}}! 👋",
-  "subtitle": "Welcome to your Boilerplate Dashboard",
+  "subtitle": "Welcome to your BotBalance Dashboard",
   "loading_dashboard": "Loading dashboard...",
   "failed_to_load": "Failed to load dashboard data",
   "user_information": "User Information",

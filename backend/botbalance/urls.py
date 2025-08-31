@@ -1,5 +1,5 @@
 """
-URL configuration for boilerplate project.
+URL configuration for botbalance project.
 """
 
 from django.conf import settings
@@ -28,5 +28,5 @@ urlpatterns = [
     # Admin interface
     path("admin/", admin.site.urls),
     # API endpoints
-    path("api/", include("app.api.urls")),
+    path("api/", include("botbalance.api.urls")),
 ]

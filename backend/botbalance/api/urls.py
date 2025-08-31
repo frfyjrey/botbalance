@@ -1,5 +1,5 @@
 """
-API URL patterns for the boilerplate project.
+API URL patterns for the botbalance project.
 """
 
 from django.urls import include, path

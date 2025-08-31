@@ -1,5 +1,5 @@
 """
-Test configuration and fixtures for boilerplate project.
+Test configuration and fixtures for botbalance project.
 """
 
 import pytest
@@ -57,7 +57,7 @@ def authenticated_api_client(api_client, jwt_tokens):
 @pytest.fixture
 def celery_app():
     """Celery app fixture."""
-    from app.celery import app
+    from botbalance.celery import app
 
     return app
 

@@ -1,8 +1,8 @@
 {
-  "name": "boilerplate-frontend",
+  "name": "botbalance-frontend",
   "private": true,
   "version": "1.0.0",
-  "description": "React + TypeScript frontend for boilerplate project",
+  "description": "React + TypeScript frontend for botbalance project",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -22,8 +22,8 @@
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.3",
-    "@tanstack/react-query": "^5.85.5",
-    "@tanstack/react-query-devtools": "^5.85.5",
+    "@tanstack/react-query": "^5.85.6",
+    "@tanstack/react-query-devtools": "^5.85.6",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "i18next": "^25.4.2",
@@ -54,11 +54,11 @@
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^16.3.0",
     "jsdom": "^26.1.0",
-    "msw": "^2.10.5",
+    "msw": "^2.11.0",
     "postcss": "^8.5.6",
     "prettier": "^3.6.2",
     "tailwindcss": "^4.1.12",
-    "typescript": "~5.8.3",
+    "typescript": "~5.9.2",
     "typescript-eslint": "^8.39.1",
     "vite": "^7.1.2",
     "vitest": "^3.2.4"
