@@ -1,5 +1,5 @@
 """
-Celery tasks for the boilerplate project.
+Celery tasks for the botbalance project.
 
 This module contains background tasks that can be executed asynchronously.
 """
@@ -74,7 +74,7 @@ def heartbeat_task() -> dict[str, Any]:
         "timestamp": int(time.time()),
         "django_version": django.get_version(),
         "debug_mode": settings.DEBUG,
-        "system": "boilerplate-backend",
+        "system": "botbalance-backend",
     }
 
     return result

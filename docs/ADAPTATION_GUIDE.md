@@ -24,7 +24,7 @@
 
 ```bash
 # Клонируйте бойлерплейт
-git clone <boilerplate-repo-url> my-new-project
+git clone <botbalance-repo-url> my-new-project
 cd my-new-project
 
 # Удалите git историю и создайте новый репозиторий
@@ -528,7 +528,7 @@ LOGGING = {
         'file': {
             'level': 'INFO',
             'class': 'logging.FileHandler',
-            'filename': 'app.log',
+            'filename': 'botbalance.log',
         },
         'console': {
             'level': 'DEBUG',

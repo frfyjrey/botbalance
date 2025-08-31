@@ -11,9 +11,9 @@
 # 🔧 For new projects: Update BACKEND_APP and FRONTEND_APP variables
 
 # 📋 Project Configuration (CUSTOMIZE FOR YOUR PROJECT)
-PROJECT_NAME := boilerplate
-BACKEND_APP := app
-FRONTEND_APP := boilerplate-frontend
+PROJECT_NAME := botbalance
+BACKEND_APP := botbalance
+FRONTEND_APP := botbalance-frontend
 BACKEND_DIR := backend
 FRONTEND_DIR := frontend
 
@@ -238,7 +238,7 @@ reset: clean ## Reset project (clean + fresh setup)
 .PHONY: docker-build
 docker-build: ## Build production Docker images
 	@echo "$(BLUE)🐳 Building Docker images...$(RESET)"
-	@echo "$(YELLOW)⚠️  Production Docker setup not included in boilerplate$(RESET)"
+	@echo "$(YELLOW)⚠️  Production Docker setup not included in botbalance$(RESET)"
 	@echo "$(CYAN)💡 Add your production Dockerfile configurations here$(RESET)"
 
 .PHONY: docker-up

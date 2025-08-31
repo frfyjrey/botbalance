@@ -73,7 +73,7 @@ CSRF_COOKIE_SAMESITE = 'Strict'
 # Строгие CORS настройки
 CORS_ALLOWED_ORIGINS = [
     'https://your-domain.com',
-    'https://app.your-domain.com',
+    'https://botbalance.your-domain.com',
 ]
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_HEADERS = [

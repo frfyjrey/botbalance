@@ -37,9 +37,9 @@ uv run ruff check --fix .               # Автоисправить линти�
 # 3. ✅ ПРОВЕРКИ (потом проверяем что осталось)  
 uv run ruff check .                     # Проверить оставшиеся проблемы
 uv run mypy .                           # Проверить типы
-DJANGO_SETTINGS_MODULE=app.settings.local uv run pytest --no-cov -v    # Тесты
-DJANGO_SETTINGS_MODULE=app.settings.local uv run python manage.py check --deploy    # Django система
-DJANGO_SETTINGS_MODULE=app.settings.local uv run python manage.py makemigrations --check --dry-run    # Миграции
+DJANGO_SETTINGS_MODULE=botbalance.settings.local uv run pytest --no-cov -v    # Тесты
+DJANGO_SETTINGS_MODULE=botbalance.settings.local uv run python manage.py check --deploy    # Django система
+DJANGO_SETTINGS_MODULE=botbalance.settings.local uv run python manage.py makemigrations --check --dry-run    # Миграции
 ```
 
 ### **Frontend проверки:**
@@ -75,13 +75,13 @@ pnpm test:e2e --headed=false
 uv run pytest
 
 # ✅ ПРАВИЛЬНО  
-DJANGO_SETTINGS_MODULE=app.settings.local uv run pytest
+DJANGO_SETTINGS_MODULE=botbalance.settings.local uv run pytest
 
 # ❌ НЕПРАВИЛЬНО
 uv run python manage.py check
 
 # ✅ ПРАВИЛЬНО
-DJANGO_SETTINGS_MODULE=app.settings.local uv run python manage.py check
+DJANGO_SETTINGS_MODULE=botbalance.settings.local uv run python manage.py check
 ```
 
 ---
@@ -92,7 +92,7 @@ DJANGO_SETTINGS_MODULE=app.settings.local uv run python manage.py check
 ```bash
 # Если видите: "settings are not configured"
 # ВСЕГДА добавляйте DJANGO_SETTINGS_MODULE
-DJANGO_SETTINGS_MODULE=app.settings.local [ваша команда]
+DJANGO_SETTINGS_MODULE=botbalance.settings.local [ваша команда]
 ```
 
 ### **Ruff форматирование:**
@@ -136,7 +136,7 @@ pnpm build
 # 1. Backend - исправить + проверить
 cd backend
 uv run ruff format . && uv run ruff check --fix . && uv run ruff check .
-DJANGO_SETTINGS_MODULE=app.settings.local uv run pytest --no-cov -q
+DJANGO_SETTINGS_MODULE=botbalance.settings.local uv run pytest --no-cov -q
 
 # 2. Frontend - исправить + проверить  
 cd ../frontend

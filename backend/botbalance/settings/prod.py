@@ -41,7 +41,7 @@ ALLOWED_HOSTS = [
 ] + os.getenv("ALLOWED_HOSTS", "").split(",")
 
 CORS_ALLOWED_ORIGINS = [
-    "https://app.domain.com",  # Replace with your frontend domain
+    "https://botbalance.domain.com",  # Replace with your frontend domain
     "https://domain.com",  # Main domain
 ] + os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
 
@@ -93,7 +93,7 @@ CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.redis.RedisCache",
         "LOCATION": os.getenv("REDIS_URL", "redis://localhost:6379/1"),
-        "KEY_PREFIX": "boilerplate",
+        "KEY_PREFIX": "botbalance",
         "TIMEOUT": 300,
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",

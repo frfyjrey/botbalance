@@ -1,7 +1,7 @@
 [project]
-name = "boilerplate-backend"
+name = "botbalance-backend"
 version = "0.1.0"
-description = "Django + DRF + Celery boilerplate backend"
+description = "Django + DRF + Celery botbalance backend"
 requires-python = ">=3.11"
 dependencies = [
     "django>=5.0.0",
@@ -35,7 +35,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["app"]
+packages = ["botbalance"]
 
 [tool.ruff]
 target-version = "py311"
@@ -96,7 +96,7 @@ profile = "black"
 multi_line_output = 3
 line_length = 88
 known_django = "django"
-known_first_party = "app"
+known_first_party = "botbalance"
 sections = ["FUTURE", "STDLIB", "THIRDPARTY", "DJANGO", "FIRSTPARTY", "LOCALFOLDER"]
 
 [tool.mypy]
@@ -111,15 +111,15 @@ plugins = ["mypy_django_plugin.main"]
 # Django settings files have special patterns that mypy doesn't understand well
 [[tool.mypy.overrides]]
 module = [
-    "app.settings.*",
+    "botbalance.settings.*",
 ]
 ignore_errors = true
 
 [tool.django-stubs]
-django_settings_module = "app.settings.local"
+django_settings_module = "botbalance.settings.local"
 
 [tool.pytest.ini_options]
-DJANGO_SETTINGS_MODULE = "app.settings.local"
+DJANGO_SETTINGS_MODULE = "botbalance.settings.local"
 addopts = "-v --tb=short --strict-markers"
 testpaths = ["tests"]
 markers = [

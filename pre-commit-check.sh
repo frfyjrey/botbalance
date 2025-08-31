@@ -36,13 +36,13 @@ echo "    🔍 Running mypy type checking..."
 uv run mypy .
 
 echo "  🧪 Running backend tests..."
-DJANGO_SETTINGS_MODULE=app.settings.local uv run pytest --no-cov --disable-warnings -q
+DJANGO_SETTINGS_MODULE=botbalance.settings.local uv run pytest --no-cov --disable-warnings -q
 
 echo "  ✅ Django system checks..."
-DJANGO_SETTINGS_MODULE=app.settings.local uv run python manage.py check --deploy
+DJANGO_SETTINGS_MODULE=botbalance.settings.local uv run python manage.py check --deploy
 
 echo "  ✅ Django migration checks..."
-DJANGO_SETTINGS_MODULE=app.settings.local uv run python manage.py makemigrations --check --dry-run
+DJANGO_SETTINGS_MODULE=botbalance.settings.local uv run python manage.py makemigrations --check --dry-run
 
 # =====================================
 # ⚛️ FRONTEND CHECKS  

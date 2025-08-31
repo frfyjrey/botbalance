@@ -1,5 +1,5 @@
 """
-API Views for the boilerplate project.
+API Views for the botbalance project.
 """
 
 from datetime import datetime
@@ -15,7 +15,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from app.tasks.tasks import echo_task, heartbeat_task, long_running_task
+from botbalance.tasks.tasks import echo_task, heartbeat_task, long_running_task
 
 from .serializers import (
     LoginSerializer,
@@ -147,7 +147,7 @@ def version_view(request):
         {
             "name": "Boilerplate API",
             "version": "1.0.0",
-            "description": "Django + DRF + Celery boilerplate API",
+            "description": "Django + DRF + Celery botbalance API",
             "docs": "/api/docs/",
             "health": "/api/health/",
             "environment": "development" if settings.DEBUG else "production",

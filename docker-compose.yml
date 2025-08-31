@@ -1,9 +1,9 @@
 services:
   postgres:
     image: postgres:15-alpine
-    container_name: boilerplate_postgres
+    container_name: botbalance_postgres
     environment:
-      POSTGRES_DB: boilerplate
+      POSTGRES_DB: botbalance
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       PGDATA: /var/lib/postgresql/data/pgdata
@@ -21,7 +21,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: boilerplate_redis
+    container_name: botbalance_redis
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
@@ -37,7 +37,7 @@ services:
   # Optional: Redis Commander for Redis GUI
   redis-commander:
     image: rediscommander/redis-commander:latest
-    container_name: boilerplate_redis_commander
+    container_name: botbalance_redis_commander
     hostname: redis-commander
     environment:
       REDIS_HOSTS: "local:redis:6379"
@@ -53,7 +53,7 @@ services:
   # Optional: pgAdmin for PostgreSQL GUI
   pgadmin:
     image: dpage/pgadmin4:latest
-    container_name: boilerplate_pgadmin
+    container_name: botbalance_pgadmin
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@example.com
       PGADMIN_DEFAULT_PASSWORD: admin

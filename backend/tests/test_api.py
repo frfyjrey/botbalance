@@ -51,7 +51,7 @@ class TestVersionEndpoint:
 
         assert data["name"] == "Boilerplate API"
         assert data["version"] == "1.0.0"
-        assert data["description"] == "Django + DRF + Celery boilerplate API"
+        assert data["description"] == "Django + DRF + Celery botbalance API"
         assert "timestamp" in data
         assert "environment" in data
 

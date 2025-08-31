@@ -1,6 +1,6 @@
 # 🏗️ Django + React + TypeScript Boilerplate
 
-![CI Status](https://img.shields.io/github/actions/workflow/status/yourusername/boilerplate/ci.yml?branch=main&label=CI&logo=github)
+![CI Status](https://img.shields.io/github/actions/workflow/status/yourusername/botbalance/ci.yml?branch=main&label=CI&logo=github)
 ![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python)
 ![Django](https://img.shields.io/badge/Django-5.1-green?logo=django)
 ![React](https://img.shields.io/badge/React-19-blue?logo=react)
@@ -54,8 +54,8 @@
 
 ```bash
 # 1. Клонируйте и войдите в проект
-git clone <your-boilerplate-repo>
-cd boilerplate_drf_celery_react_ts
+git clone <your-botbalance-repo>
+cd botbalance_drf_celery_react_ts
 
 # 2. Один comando для запуска всего!
 make start
@@ -311,7 +311,7 @@ VITE_ENVIRONMENT=production
 # Backend
 cd backend
 uv run python manage.py collectstatic
-uv run python manage.py migrate --settings=app.settings.prod
+uv run python manage.py migrate --settings=botbalance.settings.prod
 
 # Frontend  
 cd frontend
@@ -380,8 +380,8 @@ pnpm build
 ## 📚 Документация
 
 ### Основная документация:
-- 📖 **[Описание архитектуры](docs/boilerplate-description.md)**
-- 📋 **[План разработки](docs/boilerplate-tasks.md)**  
+- 📖 **[Описание архитектуры](docs/botbalance-description.md)**
+- 📋 **[План разработки](docs/botbalance-tasks.md)**  
 - 🚀 **[Руководство по адаптации](docs/ADAPTATION_GUIDE.md)**
 
 ### Внешние ресурсы:
@@ -445,7 +445,7 @@ pnpm build
 ### 🎨 v1.2 (Будущее)
 - [ ] **Микросервисы** архитектура (опциональная)
 - [ ] **Kubernetes** deployment manifests  
-- [ ] **Mobile app** React Native boilerplate
+- [ ] **Mobile app** React Native botbalance
 - [ ] **Admin dashboard** с React Admin
 
 ---

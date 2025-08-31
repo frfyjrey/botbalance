@@ -1,6 +1,6 @@
 {
   "welcome": "Привет, {{username}}! 👋",
-  "subtitle": "Добро пожаловать в панель управления Boilerplate",
+  "subtitle": "Добро пожаловать в панель управления BotBalance",
   "loading_dashboard": "Загрузка панели управления...",
   "failed_to_load": "Не удалось загрузить данные панели управления",
   "user_information": "Информация о пользователе",

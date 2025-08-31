@@ -2,7 +2,7 @@
 
 ## 🎯 Цель
 
-Создать **минималистичный**, но **строгий** boilerplate-проект для приложений с DRF-бэкендом и фронтендом на Vite + React + TypeScript.
+Создать **минималистичный**, но **строгий** botbalance-проект для приложений с DRF-бэкендом и фронтендом на Vite + React + TypeScript.
 
 ### 📋 Проект сразу должен соответствовать установленным правилам:
 
@@ -17,7 +17,7 @@
 ## 📂 Структура репозитория
 
 ```
-boilerplate/
+botbalance/
 ├── backend/                        # 🔧 Django Backend
 │   ├── app/
 │   │   ├── settings/
@@ -84,7 +84,7 @@ boilerplate/
 ```bash
 # Основные настройки
 DJANGO_SECRET_KEY=dev-secret
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/boilerplate
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/botbalance
 REDIS_URL=redis://localhost:6379/0
 
 # Сеть и CORS

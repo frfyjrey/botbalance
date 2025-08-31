@@ -8,7 +8,7 @@
 
 ```bash
 # Клонировать бойлерплейт
-git clone <boilerplate-repo> my-new-project
+git clone <botbalance-repo> my-new-project
 cd my-new-project
 
 # Создать новый git репозиторий
@@ -29,7 +29,7 @@ mv backend/app backend/YOUR_PROJECT_NAME
 
 # 2. Найти и заменить во всех файлах
 find . -name "*.py" -o -name "*.toml" -o -name "*.json" -o -name "*.md" -o -name "Makefile" | \
-xargs sed -i '' 's/boilerplate/YOUR_PROJECT_NAME/g'
+xargs sed -i '' 's/botbalance/YOUR_PROJECT_NAME/g'
 
 find . -name "*.py" -o -name "*.toml" -o -name "*.json" -o -name "*.md" -o -name "Makefile" | \
 xargs sed -i '' 's/app\./YOUR_PROJECT_NAME\./g'
@@ -144,7 +144,7 @@ make dev
 git add .
 
 # Первый коммит
-git commit -m "🎉 Initial setup from boilerplate
+git commit -m "🎉 Initial setup from botbalance
 
 - Renamed project to YOUR_PROJECT_NAME
 - Updated environment variables
@@ -228,7 +228,7 @@ router = DefaultRouter()
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/', include('app.api.urls')),
+    path('api/', include('botbalance.api.urls')),
     path('api/', include(router.urls)),  # Ваши новые API
 ]
 ```
@@ -250,7 +250,7 @@ urlpatterns = [
    ```bash
    # Пересоздать БД
    make docker-down
-   docker volume rm boilerplate_drf_celery_react_ts_postgres_data
+   docker volume rm botbalance_drf_celery_react_ts_postgres_data
    make services
    make migrate
    ```

@@ -18,7 +18,7 @@ class TestTaskEndpoints:
         url = reverse("api:tasks:create_echo_task")
         data = {"message": "Test message", "delay": 1}
 
-        with patch("app.tasks.tasks.echo_task.delay") as mock_delay:
+        with patch("botbalance.tasks.tasks.echo_task.delay") as mock_delay:
             mock_task = MagicMock()
             mock_task.id = "test-task-id-123"
             mock_delay.return_value = mock_task
@@ -65,7 +65,7 @@ class TestTaskEndpoints:
         """Test creating heartbeat task."""
         url = reverse("api:tasks:create_heartbeat_task")
 
-        with patch("app.tasks.tasks.heartbeat_task.delay") as mock_delay:
+        with patch("botbalance.tasks.tasks.heartbeat_task.delay") as mock_delay:
             mock_task = MagicMock()
             mock_task.id = "heartbeat-task-123"
             mock_delay.return_value = mock_task
@@ -86,7 +86,7 @@ class TestTaskEndpoints:
         url = reverse("api:tasks:create_long_task")
         data = {"duration": 30}
 
-        with patch("app.tasks.tasks.long_running_task.delay") as mock_delay:
+        with patch("botbalance.tasks.tasks.long_running_task.delay") as mock_delay:
             mock_task = MagicMock()
             mock_task.id = "long-task-123"
             mock_delay.return_value = mock_task
@@ -111,7 +111,7 @@ class TestTaskStatusEndpoint:
         """Test getting task status for successful task."""
         url = reverse("api:tasks:task_status")
 
-        with patch("app.api.views.AsyncResult") as mock_result:
+        with patch("botbalance.api.views.AsyncResult") as mock_result:
             mock_task = MagicMock()
             mock_task.state = "SUCCESS"
             mock_task.result = {"message": "Task completed", "status": "completed"}
@@ -136,7 +136,7 @@ class TestTaskStatusEndpoint:
         """Test getting task status for pending task."""
         url = reverse("api:tasks:task_status")
 
-        with patch("app.api.views.AsyncResult") as mock_result:
+        with patch("botbalance.api.views.AsyncResult") as mock_result:
             mock_task = MagicMock()
             mock_task.state = "PENDING"
             mock_task.result = None
@@ -161,7 +161,7 @@ class TestTaskStatusEndpoint:
         """Test getting task status for task in progress."""
         url = reverse("api:tasks:task_status")
 
-        with patch("app.api.views.AsyncResult") as mock_result:
+        with patch("botbalance.api.views.AsyncResult") as mock_result:
             mock_task = MagicMock()
             mock_task.state = "PROGRESS"
             mock_task.result = None
@@ -213,4 +213,4 @@ class TestTaskStatusEndpoint:
 # Note: Direct task logic tests are complex with Celery bindings.
 # In a real project, you might use celery.contrib.testing.worker
 # or integration tests with a real worker.
-# For this boilerplate, API endpoint tests provide sufficient coverage.
+# For this botbalance, API endpoint tests provide sufficient coverage.
