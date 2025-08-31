@@ -345,7 +345,7 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/botbalance
           REDIS_URL: redis://localhost:6379/0
         run: |
-          uv run celery -A app worker --loglevel=error &
+          uv run celery -A botbalance worker --loglevel=error &
           echo $! > celery.pid
 
       - name: 🌐 Start frontend server (background)
