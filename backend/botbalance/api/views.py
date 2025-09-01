@@ -145,7 +145,7 @@ def version_view(request):
     """
     return Response(
         {
-            "name": "Boilerplate API",
+            "name": "BotBalance API",
             "version": "1.0.0",
             "description": "Django + DRF + Celery botbalance API",
             "docs": "/api/docs/",

@@ -1,6 +1,7 @@
 """
 Минимальные настройки только для миграций
 """
+
 import os
 
 # Базовые настройки
@@ -11,12 +12,12 @@ ALLOWED_HOSTS = ["*"]
 # Необходимые приложения для миграций
 INSTALLED_APPS = [
     "django.contrib.admin",
-    "django.contrib.auth", 
+    "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
     "botbalance.core",
-    "botbalance.tasks", 
+    "botbalance.tasks",
     "botbalance.api",
 ]
 
@@ -29,7 +30,7 @@ DATABASES = {
         "PASSWORD": os.environ.get("DB_PASSWORD"),
         "HOST": os.environ.get("DB_HOST"),
         "PORT": "",
-        "OPTIONS": {}
+        "OPTIONS": {},
     }
 }
 
@@ -63,7 +64,7 @@ USE_TZ = True
 # Минимальные middleware
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
-    "django.contrib.sessions.middleware.SessionMiddleware", 
+    "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",

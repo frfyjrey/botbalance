@@ -9,6 +9,7 @@ Optimized for:
 """
 
 import os
+
 from .base import *
 
 # =============================================================================
@@ -87,7 +88,7 @@ if all(key in os.environ for key in ["DB_HOST", "DB_USER", "DB_PASSWORD", "DB_NA
         "PASSWORD": os.environ.get("DB_PASSWORD"),
         "HOST": os.environ.get("DB_HOST"),  # Cloud SQL Unix socket
         "PORT": "",  # No port for Unix socket
-        "OPTIONS": {}
+        "OPTIONS": {},
     }
 else:
     # Manual Cloud SQL configuration

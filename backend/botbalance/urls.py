@@ -17,11 +17,11 @@ def root_view(request):
         "health": "/api/health/",
         "debug": settings.DEBUG,
     }
-    
+
     # Показываем админку только в debug режиме
     if settings.DEBUG:
         response_data["docs"] = "/nukoadmin/"
-    
+
     return JsonResponse(response_data)
 
 
