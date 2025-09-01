@@ -8,9 +8,36 @@ Optimized for:
 - Redis for caching and Celery
 """
 
-import dj_database_url
-
+import os
 from .base import *
+
+# =============================================================================
+# LOGGING
+# =============================================================================
+
+# Minimal logging to avoid JSON formatter issues
+LOGGING_CONFIG = None  # Disable Django's logging configuration
+LOGGING = {}
+
+# Override templates to avoid conflicts
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [],
+        "APP_DIRS": False,  # Disable APP_DIRS
+        "OPTIONS": {
+            "loaders": [
+                "django.template.loaders.filesystem.Loader",
+                "django.template.loaders.app_directories.Loader",
+            ],
+            "context_processors": [
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+            ],
+        },
+    },
+]
 
 # =============================================================================
 # SECURITY SETTINGS
@@ -35,14 +62,14 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 # =============================================================================
 
 ALLOWED_HOSTS = [
-    "api.domain.com",  # Replace with your API domain
+    "api.botbalance.me",  # Production API domain
     ".appspot.com",  # Google App Engine
-    ".a.run.app",  # Cloud Run
+    ".run.app",  # Cloud Run (fixed pattern)
 ] + os.getenv("ALLOWED_HOSTS", "").split(",")
 
 CORS_ALLOWED_ORIGINS = [
-    "https://botbalance.domain.com",  # Replace with your frontend domain
-    "https://domain.com",  # Main domain
+    "https://app.botbalance.me",  # Frontend domain
+    "https://botbalance.me",  # Main domain
 ] + os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
 
 CORS_ALLOW_ALL_ORIGINS = False
@@ -51,9 +78,17 @@ CORS_ALLOW_ALL_ORIGINS = False
 # DATABASE
 # =============================================================================
 
-# Support for Cloud SQL via DATABASE_URL
-if "DATABASE_URL" in os.environ:
-    DATABASES["default"] = dj_database_url.parse(os.environ.get("DATABASE_URL"))
+# Support for Cloud SQL via separate secrets
+if all(key in os.environ for key in ["DB_HOST", "DB_USER", "DB_PASSWORD", "DB_NAME"]):
+    DATABASES["default"] = {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.environ.get("DB_NAME"),
+        "USER": os.environ.get("DB_USER"),
+        "PASSWORD": os.environ.get("DB_PASSWORD"),
+        "HOST": os.environ.get("DB_HOST"),  # Cloud SQL Unix socket
+        "PORT": "",  # No port for Unix socket
+        "OPTIONS": {}
+    }
 else:
     # Manual Cloud SQL configuration
     DATABASES = {
