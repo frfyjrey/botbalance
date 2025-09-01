@@ -49,7 +49,7 @@ class TestVersionEndpoint:
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
 
-        assert data["name"] == "Boilerplate API"
+        assert data["name"] == "BotBalance API"
         assert data["version"] == "1.0.0"
         assert data["description"] == "Django + DRF + Celery botbalance API"
         assert "timestamp" in data
@@ -74,7 +74,7 @@ class TestRootEndpoint:
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
 
-        assert data["name"] == "Boilerplate API"
+        assert data["name"] == "BotBalance API"
         assert data["version"] == "1.0.0"
         assert data["api"] == "/api/"
         assert data["health"] == "/api/health/"

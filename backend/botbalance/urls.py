@@ -10,23 +10,26 @@ from django.urls import include, path
 
 def root_view(request):
     """Root API endpoint with basic info."""
-    return JsonResponse(
-        {
-            "name": "Boilerplate API",
-            "version": "1.0.0",
-            "docs": "/admin/",
-            "api": "/api/",
-            "health": "/api/health/",
-            "debug": settings.DEBUG,
-        }
-    )
+    response_data = {
+        "name": "BotBalance API",
+        "version": "1.0.0",
+        "api": "/api/",
+        "health": "/api/health/",
+        "debug": settings.DEBUG,
+    }
+
+    # Показываем админку только в debug режиме
+    if settings.DEBUG:
+        response_data["docs"] = "/nukoadmin/"
+
+    return JsonResponse(response_data)
 
 
 urlpatterns = [
     # Root endpoint
     path("", root_view, name="root"),
     # Admin interface
-    path("admin/", admin.site.urls),
+    path("nukoadmin/", admin.site.urls),
     # API endpoints
     path("api/", include("botbalance.api.urls")),
 ]

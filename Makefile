@@ -286,7 +286,7 @@ start: docker-up backend-setup frontend-setup migrate ## Quick start (first run)
 	@echo "$(CYAN)📖 Available URLs:$(RESET)"
 	@echo "  - API: http://localhost:8000"
 	@echo "  - Frontend: http://localhost:5173"
-	@echo "  - Admin: http://localhost:8000/admin"
+	@echo "  - Admin: http://localhost:8000/nukoadmin"
 
 # 📝 Development helpers
 .PHONY: install

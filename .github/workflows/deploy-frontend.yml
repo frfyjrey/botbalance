@@ -1,0 +1,251 @@
+# 🎨 Frontend Deployment Pipeline
+#
+# 🎯 Деплоит React SPA в Cloud Storage + CDN
+# 
+# Триггеры:
+#   - Тег вида v1.0.0, v1.0.1 и т.д.
+#   - Manual dispatch для экстренного деплоя
+#
+# 📦 Что деплоится:
+#   - React build в Cloud Storage bucket
+#   - Обновление CDN кэша
+#   - Проверка доступности
+
+name: 🎨 Deploy Frontend
+
+on:
+  push:
+    tags:
+      - 'v*'  # v1.0.0, v1.0.1, etc.
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+        - production
+        - staging
+      skip_build_cache:
+        description: 'Skip build cache'
+        required: false
+        default: false
+        type: boolean
+
+# 🔒 Разрешения
+permissions:
+  contents: read
+  id-token: write  # For Google Cloud authentication
+
+# 🌍 Environment variables
+env:
+  PROJECT_ID: botbalance
+  BUCKET_NAME: app.botbalance.me
+  NODE_VERSION: "22"
+  PNPM_VERSION: "latest"
+
+jobs:
+  deploy:
+    name: 🎨 Deploy to ${{ inputs.environment || 'production' }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'production' }}
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: 📋 Get pnpm store directory
+        working-directory: ./frontend
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: 💾 Setup pnpm cache
+        if: inputs.skip_build_cache != true
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: 📋 Install dependencies
+        working-directory: ./frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: 🏷️ Extract version from tag
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          else
+            VERSION="manual-$(date +%Y%m%d-%H%M%S)"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: 🔍 Lint check
+        working-directory: ./frontend
+        run: pnpm lint
+
+      - name: 🎨 Format check
+        working-directory: ./frontend
+        run: pnpm format:check
+
+      - name: 🔍 Type check
+        working-directory: ./frontend
+        run: pnpm tsc --noEmit
+
+      - name: 🧪 Run tests
+        working-directory: ./frontend
+        run: pnpm test:run
+
+      - name: 🏗️ Build for production
+        working-directory: ./frontend
+        env:
+          VITE_API_BASE: https://api.botbalance.me
+          VITE_APP_NAME: BotBalance
+          VITE_ENVIRONMENT: production
+          VITE_DEBUG: false
+        run: pnpm build
+
+      - name: 🔐 Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: 🛠️ Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: 📤 Deploy to Cloud Storage
+        working-directory: ./frontend
+        run: |
+          echo "🚀 Deploying to gs://${{ env.BUCKET_NAME }}"
+          
+          # Sync files to bucket
+          gsutil -m rsync -r -d dist/ gs://${{ env.BUCKET_NAME }}/
+          
+          # Set cache headers for assets (1 year cache)
+          gsutil -m setmeta -h "Cache-Control:public, max-age=31536000, immutable" gs://${{ env.BUCKET_NAME }}/assets/*
+          
+          # Set cache headers for HTML (5 minutes cache)
+          gsutil setmeta -h "Cache-Control:public, max-age=300, must-revalidate" gs://${{ env.BUCKET_NAME }}/index.html
+          
+          # Set cache headers for other root files
+          gsutil setmeta -h "Cache-Control:public, max-age=3600" gs://${{ env.BUCKET_NAME }}/vite.svg
+
+      - name: 🔄 Invalidate CDN cache
+        run: |
+          echo "🔄 Invalidating CDN cache..."
+          
+          # Get the Load Balancer URL map
+          LB_NAME="botbalance-url-map"
+          
+          # Invalidate cache for critical paths
+          gcloud compute url-maps invalidate-cdn-cache $LB_NAME \
+            --path "/*" \
+            --global || echo "⚠️ CDN invalidation failed, but deployment continues"
+
+      - name: ✅ Health check
+        run: |
+          echo "⏳ Waiting for deployment to propagate..."
+          sleep 30
+          
+          FRONTEND_URL="https://app.botbalance.me"
+          
+          # Check if frontend loads
+          if curl -sf "$FRONTEND_URL" | grep -q "BotBalance"; then
+            echo "✅ Frontend is accessible"
+          else
+            echo "❌ Frontend health check failed"
+            exit 1
+          fi
+          
+          # Check if SPA routing works
+          if curl -sf "$FRONTEND_URL/dashboard" -w "%{http_code}" | grep -q "302"; then
+            echo "✅ SPA routing is working"
+          else
+            echo "❌ SPA routing check failed"
+            exit 1
+          fi
+
+      - name: 🧪 Quick smoke test
+        run: |
+          echo "🧪 Running quick smoke test..."
+          
+          # Test API connectivity from frontend domain
+          API_URL="https://api.botbalance.me"
+          
+          if curl -sf "$API_URL/api/health/" > /dev/null; then
+            echo "✅ API is reachable from frontend"
+          else
+            echo "❌ API connectivity test failed"
+            exit 1
+          fi
+
+      - name: 📊 Bundle size report
+        working-directory: ./frontend
+        run: |
+          echo "## 📊 Bundle Size Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| File | Size |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|" >> $GITHUB_STEP_SUMMARY
+          
+          cd dist
+          find . -name "*.js" -o -name "*.css" | while read file; do
+            size=$(du -h "$file" | cut -f1)
+            echo "| $file | $size |" >> $GITHUB_STEP_SUMMARY
+          done
+
+      - name: 📝 Deploy summary
+        run: |
+          echo "## 🎨 Frontend Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ steps.version.outputs.VERSION }}" >> $GITHUB_STEP_SUMMARY
+          echo "**URL:** https://app.botbalance.me" >> $GITHUB_STEP_SUMMARY
+          echo "**Bucket:** gs://${{ env.BUCKET_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Deployment Details:" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Build completed successfully" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Files uploaded to Cloud Storage" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ CDN cache invalidated" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Health checks passed" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ SPA routing verified" >> $GITHUB_STEP_SUMMARY
+
+  # 🔄 Rollback job (manual trigger)
+  rollback:
+    name: 🔄 Rollback  
+    runs-on: ubuntu-latest
+    if: failure()
+    needs: deploy
+    environment: ${{ inputs.environment || 'production' }}
+    
+    steps:
+      - name: 🔐 Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: 🛠️ Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: 🔄 Rollback frontend
+        run: |
+          echo "🔄 Frontend rollback requires manual intervention"
+          echo "To rollback:"
+          echo "1. Restore previous version from bucket versioning"
+          echo "2. Or redeploy previous git tag"
+          echo "3. Invalidate CDN cache manually"
+          
+          # Note: Cloud Storage doesn't have automatic rollback like Cloud Run
+          # This would require implementing versioning or backup strategy

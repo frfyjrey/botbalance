@@ -1,0 +1,29 @@
+name: botbalance-url-map
+defaultService: global/backendBuckets/botbalance-frontend-backend
+hostRules:
+- hosts:
+  - app.botbalance.me
+  pathMatcher: spa-matcher
+pathMatchers:
+- name: spa-matcher
+  defaultService: global/backendBuckets/botbalance-frontend-backend
+  routeRules:
+  # Static assets - serve directly
+  - priority: 100
+    matchRules:
+    - prefixMatch: /assets/
+    service: global/backendBuckets/botbalance-frontend-backend
+  # Root files - serve directly  
+  - priority: 200
+    matchRules:
+    - fullPathMatch: /
+    - fullPathMatch: /index.html
+    - fullPathMatch: /vite.svg
+    service: global/backendBuckets/botbalance-frontend-backend
+  # SPA routes - redirect to root for client-side routing
+  - priority: 300
+    matchRules:
+    - prefixMatch: /
+    urlRedirect:
+      pathRedirect: /
+      redirectResponseCode: FOUND
