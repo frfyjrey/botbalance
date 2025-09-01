@@ -94,7 +94,10 @@ jobs:
 
       - name: 🗄️ Run database migrations
         run: |
-          gcloud run jobs create migrate-${{ steps.version.outputs.VERSION }} \
+          # Convert version to GCP-compatible name (replace dots with dashes)
+          JOB_NAME="migrate-$(echo ${{ steps.version.outputs.VERSION }} | sed 's/\./-/g')"
+          
+          gcloud run jobs create $JOB_NAME \
             --image=${{ steps.version.outputs.IMAGE_TAG }} \
             --region=${{ env.REGION }} \
             --set-cloudsql-instances=${{ env.PROJECT_ID }}:${{ env.REGION }}:botbalance-pg \
@@ -104,12 +107,12 @@ jobs:
             --command=python --args="manage.py,migrate,--noinput" \
             --max-retries=1 || true
           
-          gcloud run jobs execute migrate-${{ steps.version.outputs.VERSION }} \
+          gcloud run jobs execute $JOB_NAME \
             --region=${{ env.REGION }} \
             --wait
           
           # Cleanup migration job
-          gcloud run jobs delete migrate-${{ steps.version.outputs.VERSION }} \
+          gcloud run jobs delete $JOB_NAME \
             --region=${{ env.REGION }} \
             --quiet
 
