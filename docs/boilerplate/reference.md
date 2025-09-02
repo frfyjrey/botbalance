@@ -185,11 +185,11 @@ curl -X POST https://api.your-domain.com/api/auth/login/ \
   -H "Content-Type: application/json" \
   -d '{"username": "<USERNAME>", "password": "<PASSWORD>"}'
 
-# Create task (с JWT токеном)
+# Create task (с JWT токеном - добавь auth header)
 curl -X POST https://api.your-domain.com/api/tasks/echo/ \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <YOUR_JWT_TOKEN>" \
   -d '{"message": "Hello World"}'
+# Note: Add authentication header for protected endpoints
 ```
 
 ---
