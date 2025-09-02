@@ -52,7 +52,9 @@ make start
 - **API Health:** http://localhost:8000/api/health/
 - **API Root:** http://localhost:8000/ 
 - **Frontend:** http://localhost:5173
-- **Django Admin:** http://localhost:8000/nukoadmin/ (admin/admin123)
+- **Django Admin:** http://localhost:8000/nukoadmin/ 
+
+> Создай суперпользователя: `make createsuperuser`
 
 ### Тестирование:
 ```bash
@@ -68,7 +70,7 @@ make test-frontend
 
 ## 📱 **5. Тестируй Celery задачи:**
 1. Открой фронт: http://localhost:5173
-2. Авторизуйся: admin/admin123  
+2. Авторизуйся с созданным суперпользователем  
 3. Создай тестовую задачу
 4. Проверь что она выполнилась
 

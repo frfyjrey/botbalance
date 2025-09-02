@@ -183,12 +183,12 @@ curl https://api.your-domain.com/api/health/
 # Login  
 curl -X POST https://api.your-domain.com/api/auth/login/ \
   -H "Content-Type: application/json" \
-  -d '{"username": "admin", "password": "admin123"}'
+  -d '{"username": "<USERNAME>", "password": "<PASSWORD>"}'
 
 # Create task (с JWT токеном)
 curl -X POST https://api.your-domain.com/api/tasks/echo/ \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Authorization: Bearer <YOUR_JWT_TOKEN>" \
   -d '{"message": "Hello World"}'
 ```
 
