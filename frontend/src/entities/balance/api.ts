@@ -1,4 +1,5 @@
-import { useQuery, QueryOptions } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
+import type { UseQueryOptions } from '@tanstack/react-query';
 import { apiClient } from '@shared/lib/api';
 import { QUERY_KEYS } from '@shared/config/constants';
 import { useAuthStore } from '@shared/lib/store';
@@ -8,7 +9,7 @@ import type { BalancesResponse, AuthState } from '@shared/config/types';
  * Hook for fetching user balances
  */
 export const useBalances = (
-  options?: Partial<QueryOptions<BalancesResponse, Error>>
+  options?: Partial<UseQueryOptions<BalancesResponse, Error>>
 ) => {
   const isAuthenticated = useAuthStore(
     (state: AuthState) => state.isAuthenticated,

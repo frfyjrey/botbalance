@@ -7,6 +7,7 @@ import { AuthGuard } from './auth-guard';
 // Lazy load pages
 const LoginPage = lazy(() => import('@pages/login'));
 const DashboardPage = lazy(() => import('@pages/dashboard'));
+const AdminDashboardPage = lazy(() => import('@pages/admin-dashboard'));
 
 // Loading fallback
 // eslint-disable-next-line react-refresh/only-export-components
@@ -43,6 +44,16 @@ export const router = createBrowserRouter([
       <ProtectedRoute>
         <SuspenseWrapper>
           <DashboardPage />
+        </SuspenseWrapper>
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: ROUTES.ADMIN_DASHBOARD,
+    element: (
+      <ProtectedRoute>
+        <SuspenseWrapper>
+          <AdminDashboardPage />
         </SuspenseWrapper>
       </ProtectedRoute>
     ),
