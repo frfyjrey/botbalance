@@ -35,7 +35,7 @@ def extract_installed_apps(settings_file: Path) -> list[str]:
                                     apps.append(item.value)
                             return apps
         return []
-    except Exception as e:
+    except (OSError, UnicodeDecodeError, SyntaxError) as e:
         print(f"❌ Error parsing {settings_file}: {e}")
         return []
 
@@ -58,8 +58,21 @@ def find_apps_with_models() -> list[str]:
                     if "models.Model" in content:
                         app_name = f"botbalance.{app_dir.name}"
                         apps_with_models.append(app_name)
-                except Exception:
+                except (OSError, UnicodeDecodeError):
+                    # Skip if file cannot be read (permissions, encoding issues, etc.)
                     continue
+
+    # Also check strategies app (it's not in botbalance folder)
+    strategies_models = Path(__file__).parent / "strategies" / "models.py"
+    if strategies_models.exists():
+        try:
+            with open(strategies_models) as f:
+                content = f.read()
+            if "models.Model" in content:
+                apps_with_models.append("strategies")
+        except (OSError, UnicodeDecodeError) as e:
+            # Skip if file cannot be read (permissions, encoding issues, etc.)
+            print(f"⚠️ Warning: Could not read strategies/models.py: {e}")
 
     return apps_with_models
 
@@ -78,6 +91,13 @@ def find_apps_with_migrations() -> list[str]:
                 if len(migration_files) > 1:  # More than just __init__.py
                     app_name = f"botbalance.{app_dir.name}"
                     apps_with_migrations.append(app_name)
+
+    # Also check strategies app migrations
+    strategies_migrations = Path(__file__).parent / "strategies" / "migrations"
+    if strategies_migrations.exists() and strategies_migrations.is_dir():
+        migration_files = list(strategies_migrations.glob("*.py"))
+        if len(migration_files) > 1:  # More than just __init__.py
+            apps_with_migrations.append("strategies")
 
     return apps_with_migrations
 
@@ -133,9 +153,27 @@ def main():
     print("\n⚖️ Checking consistency...")
     issues_found = False
 
+    # Extract local apps from migrate.py for proper comparison
+    def extract_local_apps(apps_list):
+        """Extract local app names, handling both short and AppConfig formats."""
+        local_apps = []
+        for app in apps_list:
+            if app.startswith("botbalance.") or app.startswith("strategies"):
+                # Normalize AppConfig paths to app names for comparison
+                if ".apps." in app:
+                    # "botbalance.api.apps.ApiConfig" -> "botbalance.api"
+                    app_name = app.rsplit(".apps.", 1)[0]
+                else:
+                    # "botbalance.api" -> "botbalance.api"
+                    app_name = app
+                local_apps.append(app_name)
+        return local_apps
+
+    migrate_local_apps = extract_local_apps(migrate_apps)
+
     # Check if all apps with models are in migrate.py
     for app in apps_with_models:
-        if app not in migrate_apps:
+        if app not in migrate_local_apps:
             print(f"❌ CRITICAL: {app} has models but missing from migrate.py")
             issues_found = True
         else:
@@ -143,7 +181,7 @@ def main():
 
     # Check if all apps with migrations are in migrate.py
     for app in apps_with_migrations:
-        if app not in migrate_apps:
+        if app not in migrate_local_apps:
             print(f"❌ CRITICAL: {app} has migrations but missing from migrate.py")
             issues_found = True
 
@@ -158,8 +196,7 @@ def main():
 
     # 5. Compare base.py and migrate.py apps
     print("\n🔄 Comparing settings files...")
-    base_local_apps = [app for app in base_apps if app.startswith("botbalance.")]
-    migrate_local_apps = [app for app in migrate_apps if app.startswith("botbalance.")]
+    base_local_apps = extract_local_apps(base_apps)
 
     missing_in_migrate = set(base_local_apps) - set(migrate_local_apps)
     if missing_in_migrate:

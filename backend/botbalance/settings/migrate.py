@@ -9,17 +9,18 @@ SECRET_KEY = "temporary-key-for-migrations"
 DEBUG = False
 ALLOWED_HOSTS = ["*"]
 
-# Необходимые приложения для миграций
+# Необходимые приложения для миграций - using explicit AppConfig paths
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
-    "botbalance.core",
-    "botbalance.tasks",
-    "botbalance.api",
-    "botbalance.exchanges",  # Added for Step 1 migrations
+    "botbalance.core.apps.CoreConfig",
+    "botbalance.tasks.apps.TasksConfig",
+    "botbalance.api.apps.ApiConfig",
+    "botbalance.exchanges.apps.ExchangesConfig",  # Added for Step 1 migrations
+    "strategies.apps.StrategiesConfig",  # CRITICAL: Was missing - caused Strategy model errors!
 ]
 
 # База данных с отдельными секретами
