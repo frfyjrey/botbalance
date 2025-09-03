@@ -44,6 +44,9 @@ DJANGO_SETTINGS_MODULE=botbalance.settings.local uv run python manage.py check -
 echo "  ✅ Django migration checks..."
 DJANGO_SETTINGS_MODULE=botbalance.settings.local uv run python manage.py makemigrations --check --dry-run
 
+echo "  🔍 Django apps consistency checks..."
+uv run python check_django_apps.py
+
 # =====================================
 # ⚛️ FRONTEND CHECKS  
 # =====================================

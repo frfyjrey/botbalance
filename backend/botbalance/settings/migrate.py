@@ -19,6 +19,7 @@ INSTALLED_APPS = [
     "botbalance.core",
     "botbalance.tasks",
     "botbalance.api",
+    "botbalance.exchanges",  # Added for Step 1 migrations
 ]
 
 # База данных с отдельными секретами
