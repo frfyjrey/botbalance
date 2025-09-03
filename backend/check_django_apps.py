@@ -73,7 +73,6 @@ def find_apps_with_models() -> list[str]:
         except (OSError, UnicodeDecodeError) as e:
             # Skip if file cannot be read (permissions, encoding issues, etc.)
             print(f"⚠️ Warning: Could not read strategies/models.py: {e}")
-            pass
 
     return apps_with_models
 
