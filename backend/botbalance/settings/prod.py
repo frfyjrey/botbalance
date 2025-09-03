@@ -39,7 +39,7 @@ TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
         "DIRS": [],
-        "APP_DIRS": True,  # Enable APP_DIRS for proper app discovery
+        "APP_DIRS": False,  # Must be False when loaders is defined
         "OPTIONS": {
             "loaders": [
                 (
@@ -235,6 +235,28 @@ LOGGING = {
             "level": "INFO",
             "propagate": False,
         },
+        # Отключаем сообщения о файлах и autoreload в production тоже
+        "django.utils.autoreload": {
+            "handlers": ["console"],
+            "level": "WARNING",  # В продакшене еще выше уровень
+            "propagate": False,
+        },
+        "django.core.management": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "django.core.management.commands.runserver": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        # SQL запросы в продакшене обычно не нужны, но если нужно - можно включить
+        # "django.db.backends": {
+        #     "handlers": ["console"],
+        #     "level": "DEBUG",
+        #     "propagate": False,
+        # },
     },
 }
 

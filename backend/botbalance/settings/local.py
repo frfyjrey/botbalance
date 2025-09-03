@@ -37,8 +37,35 @@ CORS_ALLOW_ALL_ORIGINS = True  # Allow all origins in development
 # =============================================================================
 
 LOGGING["root"]["level"] = "DEBUG"
-LOGGING["loggers"]["django"]["level"] = "DEBUG"
+LOGGING["loggers"]["django"]["level"] = "INFO"  # Снижаем общий уровень Django
 LOGGING["loggers"]["celery"]["level"] = "DEBUG"
+
+# Включаем SQL запросы в DEBUG
+LOGGING["loggers"]["django.db.backends"] = {
+    "handlers": ["console"],
+    "level": "DEBUG",
+    "propagate": False,
+}
+
+# Отключаем сообщения о файлах и autoreload
+LOGGING["loggers"]["django.utils.autoreload"] = {
+    "handlers": ["console"],
+    "level": "INFO",  # Поднимаем уровень чтобы не видеть DEBUG сообщения о файлах
+    "propagate": False,
+}
+
+# Отключаем другие файловые DEBUG сообщения
+LOGGING["loggers"]["django.core.management"] = {
+    "handlers": ["console"],
+    "level": "INFO",
+    "propagate": False,
+}
+
+LOGGING["loggers"]["django.core.management.commands.runserver"] = {
+    "handlers": ["console"],
+    "level": "INFO",
+    "propagate": False,
+}
 
 # =============================================================================
 # DEVELOPMENT TOOLS
