@@ -27,6 +27,26 @@ task_patterns = [
 me_patterns = [
     path("balances/", views.user_balances_view, name="balances"),
     path("portfolio/summary/", views.portfolio_summary_view, name="portfolio_summary"),
+    path(
+        "portfolio/snapshots/",
+        views.portfolio_snapshots_list_view,
+        name="portfolio_snapshots_list",
+    ),
+    path(
+        "portfolio/snapshots/create/",
+        views.create_portfolio_snapshot_view,
+        name="create_portfolio_snapshot",
+    ),
+    path(
+        "portfolio/snapshots/delete_all/",
+        views.delete_all_portfolio_snapshots_view,
+        name="delete_all_portfolio_snapshots",
+    ),
+    path(
+        "portfolio/last_snapshot/",
+        views.latest_portfolio_snapshot_view,
+        name="latest_portfolio_snapshot",
+    ),
     path("strategy/", include("strategies.urls", namespace="strategy")),
 ]
 

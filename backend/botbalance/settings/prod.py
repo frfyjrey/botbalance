@@ -13,6 +13,20 @@ import os
 from .base import *
 
 # =============================================================================
+# MIDDLEWARE FOR PRODUCTION
+# =============================================================================
+
+# Insert whitenoise after SecurityMiddleware for static files serving
+MIDDLEWARE = (
+    [
+        "corsheaders.middleware.CorsMiddleware",
+        "django.middleware.security.SecurityMiddleware",
+        "whitenoise.middleware.WhiteNoiseMiddleware",  # Add whitenoise for static files
+    ]
+    + MIDDLEWARE[2:]
+)  # Add the rest of middleware from base.py
+
+# =============================================================================
 # LOGGING
 # =============================================================================
 
@@ -66,12 +80,28 @@ ALLOWED_HOSTS = [
     "api.botbalance.me",  # Production API domain
     ".appspot.com",  # Google App Engine
     ".run.app",  # Cloud Run (fixed pattern)
-] + os.getenv("ALLOWED_HOSTS", "").split(",")
+]
+
+# Add additional allowed hosts from environment variable if set
+if os.getenv("ALLOWED_HOSTS"):
+    ALLOWED_HOSTS.extend(
+        host.strip()
+        for host in os.getenv("ALLOWED_HOSTS", "").split(",")
+        if host.strip()
+    )
 
 CORS_ALLOWED_ORIGINS = [
     "https://app.botbalance.me",  # Frontend domain
     "https://botbalance.me",  # Main domain
-] + os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
+]
+
+# Add additional CORS origins from environment variable if set
+if os.getenv("CORS_ALLOWED_ORIGINS"):
+    CORS_ALLOWED_ORIGINS.extend(
+        origin.strip()
+        for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
+        if origin.strip()
+    )
 
 CORS_ALLOW_ALL_ORIGINS = False
 
@@ -115,11 +145,14 @@ DATABASES["default"]["CONN_MAX_AGE"] = 60
 
 # Configure for Google Cloud Storage
 STATIC_URL = "/static/"
-STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
+# Whitenoise settings for serving static files
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 # Media files (if needed)
 MEDIA_URL = "/media/"
-MEDIA_ROOT = os.path.join(BASE_DIR, "media")
+MEDIA_ROOT = BASE_DIR / "media"
 
 # =============================================================================
 # CACHING (Redis)
@@ -132,7 +165,6 @@ CACHES = {
         "KEY_PREFIX": "botbalance",
         "TIMEOUT": 300,
         "OPTIONS": {
-            "CLIENT_CLASS": "django_redis.client.DefaultClient",
             "CONNECTION_POOL_KWARGS": {
                 "max_connections": 20,
                 "retry_on_timeout": True,

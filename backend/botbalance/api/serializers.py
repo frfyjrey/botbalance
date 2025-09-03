@@ -249,3 +249,97 @@ class PortfolioSummaryResponseSerializer(serializers.Serializer):
                 "Portfolio data is required for successful responses"
             )
         return data
+
+
+# =============================================================================
+# PORTFOLIO SNAPSHOT SERIALIZERS (Step 2)
+# =============================================================================
+
+
+class PortfolioSnapshotSerializer(serializers.Serializer):
+    """Serializer for individual portfolio snapshot."""
+
+    id = serializers.IntegerField(read_only=True, help_text="Snapshot ID")
+    ts = serializers.DateTimeField(read_only=True, help_text="Snapshot timestamp")
+    quote_asset = serializers.CharField(
+        max_length=10, help_text="Quote currency (e.g., USDT)"
+    )
+    nav_quote = serializers.DecimalField(
+        max_digits=20,
+        decimal_places=8,
+        help_text="Total Net Asset Value in quote currency",
+    )
+    asset_count = serializers.SerializerMethodField(
+        help_text="Number of assets in snapshot"
+    )
+    source = serializers.CharField(max_length=20, help_text="How snapshot was created")
+    exchange_account = serializers.CharField(
+        max_length=100,
+        allow_null=True,
+        help_text="Exchange account name or null",
+    )
+    created_at = serializers.DateTimeField(
+        read_only=True, help_text="When snapshot was saved"
+    )
+
+    def get_asset_count(self, obj) -> int:
+        """Get number of assets in this snapshot."""
+        # Handle both model instances and dicts
+        if hasattr(obj, "get_asset_count"):
+            # PortfolioSnapshot model instance
+            return obj.get_asset_count()
+        elif isinstance(obj, dict) and "positions" in obj:
+            # Dict from to_summary_dict()
+            return len(obj["positions"]) if obj["positions"] else 0
+        else:
+            # Fallback
+            return 0
+
+
+class PortfolioSnapshotDetailSerializer(PortfolioSnapshotSerializer):
+    """Detailed serializer with positions and prices."""
+
+    positions = serializers.JSONField(
+        help_text='Asset positions {"BTC": {"amount": "0.12", "quote_value": "7234.50"}}'
+    )
+    prices = serializers.JSONField(
+        allow_null=True,
+        help_text='Market prices {"BTCUSDT": "60287.1"} or null',
+    )
+
+
+class SnapshotListResponseSerializer(serializers.Serializer):
+    """Response for GET /api/me/portfolio/snapshots"""
+
+    status = serializers.CharField(default="success")
+    snapshots = PortfolioSnapshotSerializer(many=True)
+    count = serializers.IntegerField(help_text="Total number of snapshots returned")
+    has_more = serializers.BooleanField(
+        help_text="Whether more snapshots are available"
+    )
+
+
+class CreateSnapshotRequestSerializer(serializers.Serializer):
+    """Request for POST /api/me/portfolio/snapshots"""
+
+    force = serializers.BooleanField(
+        default=False, help_text="Bypass throttling if true"
+    )
+
+
+class CreateSnapshotResponseSerializer(serializers.Serializer):
+    """Response for POST /api/me/portfolio/snapshots"""
+
+    status = serializers.CharField()
+    snapshot = PortfolioSnapshotSerializer(required=False)
+    message = serializers.CharField(required=False)
+    error_code = serializers.CharField(required=False)
+
+
+class LatestSnapshotResponseSerializer(serializers.Serializer):
+    """Response for GET /api/me/portfolio/last_snapshot"""
+
+    status = serializers.CharField()
+    snapshot = PortfolioSnapshotDetailSerializer(required=False)
+    message = serializers.CharField(required=False)
+    error_code = serializers.CharField(required=False)

@@ -203,6 +203,61 @@ export const apiClient = {
     );
   },
 
+  // Portfolio snapshots endpoints
+  async getPortfolioSnapshots(params?: {
+    limit?: number;
+    from?: string;
+    to?: string;
+  }): Promise<{
+    status: string;
+    snapshots?: unknown[];
+    count: number;
+    has_more: boolean;
+    message?: string;
+  }> {
+    const queryParams = new URLSearchParams();
+    if (params?.limit) queryParams.set('limit', params.limit.toString());
+    if (params?.from) queryParams.set('from', params.from);
+    if (params?.to) queryParams.set('to', params.to);
+
+    const url = `/api/me/portfolio/snapshots/${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+    return apiRequest(url);
+  },
+
+  async createPortfolioSnapshot(force = false): Promise<{
+    status: string;
+    snapshot?: unknown;
+    message?: string;
+    error_code?: string;
+  }> {
+    return apiRequest('/api/me/portfolio/snapshots/create/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ force }),
+    });
+  },
+
+  async deleteAllPortfolioSnapshots(): Promise<{
+    status: string;
+    message: string;
+    deleted_count: number;
+  }> {
+    return apiRequest('/api/me/portfolio/snapshots/delete_all/', {
+      method: 'DELETE',
+    });
+  },
+
+  async getLatestPortfolioSnapshot(): Promise<{
+    status: string;
+    snapshot?: unknown;
+    message?: string;
+    error_code?: string;
+  }> {
+    return apiRequest('/api/me/portfolio/last_snapshot/');
+  },
+
   // Strategy endpoints
   async getStrategy(): Promise<import('@entities/strategy').StrategyResponse> {
     return apiRequest<import('@entities/strategy').StrategyResponse>(
