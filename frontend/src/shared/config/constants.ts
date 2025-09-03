@@ -19,6 +19,7 @@ export const ROUTES = {
   HOME: '/',
   LOGIN: '/login',
   DASHBOARD: '/dashboard',
+  STRATEGY: '/strategy',
   ADMIN_DASHBOARD: '/admin-dashboard',
   PROFILE: '/profile',
   TASKS: '/tasks',
@@ -49,6 +50,8 @@ export const QUERY_KEYS = {
   TASK_STATUS: 'task-status',
   BALANCES: 'balances',
   PORTFOLIO_SUMMARY: 'portfolio-summary',
+  STRATEGY: 'strategy',
+  REBALANCE_PLAN: 'rebalance-plan',
 } as const;
 
 // Theme

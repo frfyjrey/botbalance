@@ -203,6 +203,59 @@ export const apiClient = {
     );
   },
 
+  // Strategy endpoints
+  async getStrategy(): Promise<import('@entities/strategy').StrategyResponse> {
+    return apiRequest<import('@entities/strategy').StrategyResponse>(
+      '/api/me/strategy/',
+    );
+  },
+
+  async createStrategy(
+    data: import('@entities/strategy').StrategyCreateRequest,
+  ): Promise<import('@entities/strategy').StrategyResponse> {
+    return apiRequest<import('@entities/strategy').StrategyResponse>(
+      '/api/me/strategy/',
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      },
+    );
+  },
+
+  async updateStrategy(
+    data: import('@entities/strategy').StrategyUpdateRequest,
+  ): Promise<import('@entities/strategy').StrategyResponse> {
+    return apiRequest<import('@entities/strategy').StrategyResponse>(
+      '/api/me/strategy/',
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      },
+    );
+  },
+
+  async activateStrategy(
+    data: import('@entities/strategy').StrategyActivateRequest,
+  ): Promise<import('@entities/strategy').StrategyResponse> {
+    return apiRequest<import('@entities/strategy').StrategyResponse>(
+      '/api/me/strategy/activate/',
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      },
+    );
+  },
+
+  async getRebalancePlan(
+    forceRefresh?: boolean,
+  ): Promise<import('@entities/strategy').RebalancePlanResponse> {
+    const url = forceRefresh
+      ? '/api/me/strategy/rebalance/plan/?force_refresh=true'
+      : '/api/me/strategy/rebalance/plan/';
+
+    return apiRequest<import('@entities/strategy').RebalancePlanResponse>(url);
+  },
+
   // Generic request method for custom calls
   async request<T = unknown>(
     endpoint: string,
