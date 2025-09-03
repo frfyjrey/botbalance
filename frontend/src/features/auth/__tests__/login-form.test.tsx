@@ -65,11 +65,18 @@ describe('LoginForm', () => {
     expect(passwordInput.value).toBe('password');
   });
 
-  it('shows demo credentials', () => {
+  it('shows clean login form without demo credentials', () => {
     render(<LoginForm />, { wrapper: createWrapper() });
 
-    expect(screen.getByText('login.demo_credentials')).toBeInTheDocument();
-    expect(screen.getByText('login.admin')).toBeInTheDocument();
-    expect(screen.getByText('login.admin123')).toBeInTheDocument();
+    // Ensure demo credentials are not shown
+    expect(
+      screen.queryByText('login.demo_credentials'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('login.admin')).not.toBeInTheDocument();
+    expect(screen.queryByText('login.admin123')).not.toBeInTheDocument();
+
+    // But form elements are still there
+    expect(screen.getByLabelText('login.username')).toBeInTheDocument();
+    expect(screen.getByLabelText('login.password')).toBeInTheDocument();
   });
 });

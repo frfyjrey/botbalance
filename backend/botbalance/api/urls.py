@@ -23,6 +23,11 @@ task_patterns = [
     path("list/", views.list_tasks_view, name="list_tasks"),
 ]
 
+# User account management URLs
+me_patterns = [
+    path("balances/", views.user_balances_view, name="balances"),
+]
+
 urlpatterns = [
     # System endpoints
     path("health/", views.health_check_view, name="health"),
@@ -31,4 +36,6 @@ urlpatterns = [
     path("auth/", include((auth_patterns, "auth"))),
     # Task management endpoints
     path("tasks/", include((task_patterns, "tasks"))),
+    # User account endpoints
+    path("me/", include((me_patterns, "me"))),
 ]

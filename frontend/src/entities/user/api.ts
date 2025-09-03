@@ -41,7 +41,8 @@ export const useUserProfile = () => {
     },
     enabled: isAuthenticated, // Use reactive state instead of direct token check
     retry: false, // Don't retry on auth errors
-    staleTime: 1000 * 60 * 5, // Consider data fresh for 5 minutes
+    staleTime: 1000 * 30, // Consider data fresh for 30 seconds (was 5 minutes!)
+    refetchOnMount: true, // Always refetch when component mounts
   });
 };
 

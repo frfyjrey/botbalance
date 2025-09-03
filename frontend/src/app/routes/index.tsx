@@ -2,11 +2,13 @@ import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { Suspense, lazy } from 'react';
 import { ROUTES } from '@shared/config/constants';
 import { ProtectedRoute } from './protected-route';
+import { AdminProtectedRoute } from './admin-protected-route';
 import { AuthGuard } from './auth-guard';
 
 // Lazy load pages
 const LoginPage = lazy(() => import('@pages/login'));
 const DashboardPage = lazy(() => import('@pages/dashboard'));
+const AdminDashboardPage = lazy(() => import('@pages/admin-dashboard'));
 
 // Loading fallback
 // eslint-disable-next-line react-refresh/only-export-components
@@ -45,6 +47,16 @@ export const router = createBrowserRouter([
           <DashboardPage />
         </SuspenseWrapper>
       </ProtectedRoute>
+    ),
+  },
+  {
+    path: ROUTES.ADMIN_DASHBOARD,
+    element: (
+      <AdminProtectedRoute>
+        <SuspenseWrapper>
+          <AdminDashboardPage />
+        </SuspenseWrapper>
+      </AdminProtectedRoute>
     ),
   },
   {

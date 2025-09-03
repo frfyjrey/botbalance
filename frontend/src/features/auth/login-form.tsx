@@ -143,31 +143,6 @@ export const LoginForm = ({ onSuccess, className }: LoginFormProps) => {
               </Button>
             </div>
           </form>
-
-          {/* Demo credentials */}
-          <div
-            className="mt-6 pt-4"
-            style={{ borderTop: '1px solid rgb(var(--border))' }}
-          >
-            <div
-              className="text-xs text-center space-y-1"
-              style={{ color: 'rgb(var(--fg-muted))' }}
-            >
-              <p className="font-medium">{t('login.demo_credentials')}</p>
-              <div
-                className="p-2 rounded text-left font-mono"
-                style={{ backgroundColor: 'rgb(var(--canvas-subtle))' }}
-              >
-                <div>
-                  <strong>{t('login.demo_username')}</strong> {t('login.admin')}
-                </div>
-                <div>
-                  <strong>{t('login.demo_password')}</strong>{' '}
-                  {t('login.admin123')}
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>

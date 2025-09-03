@@ -31,5 +31,16 @@
     "task_id": "Task ID: {{taskId}}",
     "state": "State:",
     "result": "Result:"
+  },
+  "balances": {
+    "portfolio": "Portfolio",
+    "total_value": "Total Value",
+    "loading": "Loading balances...",
+    "error": "Failed to load balances",
+    "no_accounts": "No Exchange Accounts",
+    "add_exchange_account": "Please add an exchange account to view your portfolio",
+    "no_balances": "No Assets Found",
+    "deposit_funds": "Deposit funds to see your portfolio",
+    "last_updated": "Last updated"
   }
 }

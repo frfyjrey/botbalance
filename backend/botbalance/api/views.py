@@ -278,8 +278,16 @@ def task_status_view(request):
         return Response({"status": "success", "task": response_data})
 
     except Exception as e:
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.error("Error getting task status: %s", str(e), exc_info=True)
+
         return Response(
-            {"status": "error", "message": f"Failed to get task status: {str(e)}"},
+            {
+                "status": "error",
+                "message": "Failed to get task status due to an internal error.",
+            },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -311,7 +319,108 @@ def list_tasks_view(request):
         )
 
     except Exception as e:
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.error("Error listing tasks: %s", str(e), exc_info=True)
+
         return Response(
-            {"status": "error", "message": f"Failed to list tasks: {str(e)}"},
+            {
+                "status": "error",
+                "message": "Failed to list tasks due to an internal error.",
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+# =============================================================================
+# EXCHANGE & BALANCES VIEWS
+# =============================================================================
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def user_balances_view(request):
+    """
+    Get user's exchange account balances.
+
+    For MVP: returns balances from user's first active exchange account.
+    Later: will support account selection via query params.
+    """
+    import asyncio
+    from decimal import Decimal
+
+    from botbalance.exchanges.models import ExchangeAccount
+
+    try:
+        # Get user's first active exchange account
+        exchange_account = ExchangeAccount.objects.filter(
+            user=request.user, is_active=True
+        ).first()
+
+        if not exchange_account:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "No active exchange accounts found. Please add an exchange account first.",
+                    "error_code": "NO_EXCHANGE_ACCOUNTS",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Get adapter and fetch balances
+        adapter = exchange_account.get_adapter()
+        raw_balances = asyncio.run(adapter.get_balances(exchange_account.account_type))
+
+        # Convert to list format for serializer
+        balances_data = []
+        total_usd_value = Decimal("0.00")
+
+        for asset, balance in raw_balances.items():
+            if balance > 0:  # Only include non-zero balances
+                # For MVP: mock USD values (will implement real price calculation in Step 2)
+                mock_usd_prices = {
+                    "BTC": Decimal("43250.50"),
+                    "ETH": Decimal("2580.75"),
+                    "BNB": Decimal("310.25"),
+                    "USDT": Decimal("1.00"),
+                    "USDC": Decimal("1.00"),
+                }
+
+                usd_price = mock_usd_prices.get(asset, Decimal("1.00"))
+                usd_value = balance * usd_price
+                total_usd_value += usd_value
+
+                balances_data.append(
+                    {
+                        "asset": asset,
+                        "balance": balance,
+                        "usd_value": usd_value,
+                    }
+                )
+
+        response_data = {
+            "status": "success",
+            "exchange_account": exchange_account.name,
+            "account_type": exchange_account.account_type,
+            "balances": balances_data,
+            "total_usd_value": total_usd_value,
+            "timestamp": datetime.now(),
+        }
+
+        return Response(response_data)
+
+    except Exception as e:
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.error("Error fetching balances: %s", str(e), exc_info=True)
+
+        return Response(
+            {
+                "status": "error",
+                "message": "Failed to fetch balances due to an internal error.",
+                "error_code": "BALANCE_FETCH_ERROR",
+            },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
