@@ -1,5 +1,12 @@
 import { useTranslation } from 'react-i18next';
-import { useBalances, formatCurrency, formatBalance, getAssetDisplayName, sortBalancesByValue, getTotalValue } from '@entities/balance';
+import {
+  useBalances,
+  formatCurrency,
+  formatBalance,
+  getAssetDisplayName,
+  sortBalancesByValue,
+  getTotalValue,
+} from '@entities/balance';
 import type { Balance } from '@shared/config/types';
 
 interface BalancesCardProps {
@@ -9,11 +16,14 @@ interface BalancesCardProps {
 export const BalancesCard = ({ className }: BalancesCardProps) => {
   const { t } = useTranslation('dashboard');
   const { data: balancesData, isLoading, isError, error } = useBalances();
-  
+
   // Check if error is "no exchange accounts" (404)
   const isNoAccounts = error && 'status' in error && error.status === 404;
 
-  const getBalancePercentage = (balance: Balance, totalValue: number): number => {
+  const getBalancePercentage = (
+    balance: Balance,
+    totalValue: number,
+  ): number => {
     if (totalValue === 0) return 0;
     return (balance.usd_value / totalValue) * 100;
   };
@@ -58,7 +68,10 @@ export const BalancesCard = ({ className }: BalancesCardProps) => {
         </div>
         <div className="p-4">
           <div className="flex items-center justify-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderBottomColor: 'rgb(var(--fg-default))' }}></div>
+            <div
+              className="animate-spin rounded-full h-8 w-8 border-b-2"
+              style={{ borderBottomColor: 'rgb(var(--fg-default))' }}
+            ></div>
             <span className="ml-3" style={{ color: 'rgb(var(--fg-muted))' }}>
               {t('balances.loading')}
             </span>
@@ -107,10 +120,7 @@ export const BalancesCard = ({ className }: BalancesCardProps) => {
             >
               Нет аккаунтов бирж
             </p>
-            <p
-              className="text-sm"
-              style={{ color: 'rgb(var(--fg-muted))' }}
-            >
+            <p className="text-sm" style={{ color: 'rgb(var(--fg-muted))' }}>
               Добавьте аккаунт биржи для просмотра портфеля
             </p>
           </div>
@@ -176,14 +186,8 @@ export const BalancesCard = ({ className }: BalancesCardProps) => {
             >
               {isNoAccounts ? t('balances.no_accounts') : t('balances.error')}
             </p>
-            <p
-              className="text-sm"
-              style={{ color: 'rgb(var(--fg-muted))' }}
-            >
-              {isNoAccounts 
-                ? t('balances.add_exchange_account') 
-                : errorMessage
-              }
+            <p className="text-sm" style={{ color: 'rgb(var(--fg-muted))' }}>
+              {isNoAccounts ? t('balances.add_exchange_account') : errorMessage}
             </p>
           </div>
         </div>
@@ -229,10 +233,7 @@ export const BalancesCard = ({ className }: BalancesCardProps) => {
             >
               {t('balances.no_balances')}
             </p>
-            <p
-              className="text-sm"
-              style={{ color: 'rgb(var(--fg-muted))' }}
-            >
+            <p className="text-sm" style={{ color: 'rgb(var(--fg-muted))' }}>
               {t('balances.deposit_funds')}
             </p>
           </div>
@@ -276,23 +277,20 @@ export const BalancesCard = ({ className }: BalancesCardProps) => {
           >
             {formatCurrency(totalValue)}
           </div>
-          <p
-            className="text-sm"
-            style={{ color: 'rgb(var(--fg-muted))' }}
-          >
+          <p className="text-sm" style={{ color: 'rgb(var(--fg-muted))' }}>
             {t('balances.total_value')}
           </p>
         </div>
       </div>
-      
+
       <div className="p-4">
         <div className="space-y-3">
-          {sortedBalances.map((balance) => {
+          {sortedBalances.map(balance => {
             const percentage = getBalancePercentage(balance, totalValue);
             return (
               <div key={balance.asset} className="flex items-center space-x-3">
                 {getAssetIcon(balance.asset)}
-                
+
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
                     <div className="min-w-0 flex-1">
@@ -324,7 +322,7 @@ export const BalancesCard = ({ className }: BalancesCardProps) => {
                       </p>
                     </div>
                   </div>
-                  
+
                   {/* Progress bar for percentage */}
                   <div className="mt-2">
                     <div
@@ -345,14 +343,18 @@ export const BalancesCard = ({ className }: BalancesCardProps) => {
             );
           })}
         </div>
-        
+
         {balancesData.timestamp && (
-          <div className="mt-4 pt-4" style={{ borderTop: '1px solid rgb(var(--border))' }}>
+          <div
+            className="mt-4 pt-4"
+            style={{ borderTop: '1px solid rgb(var(--border))' }}
+          >
             <p
               className="text-xs text-center"
               style={{ color: 'rgb(var(--fg-muted))' }}
             >
-              {t('balances.last_updated')}: {new Date(balancesData.timestamp).toLocaleString()}
+              {t('balances.last_updated')}:{' '}
+              {new Date(balancesData.timestamp).toLocaleString()}
             </p>
           </div>
         )}

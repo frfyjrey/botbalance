@@ -15,8 +15,9 @@ export const formatCurrency = (value: number, currency = 'USD'): string => {
 
 export const formatBalance = (balance: number, decimals = 8): string => {
   // Show more decimals for small balances, fewer for large ones
-  const displayDecimals = balance < 1 ? Math.min(decimals, 8) : Math.min(decimals, 4);
-  
+  const displayDecimals =
+    balance < 1 ? Math.min(decimals, 8) : Math.min(decimals, 4);
+
   return new Intl.NumberFormat('en-US', {
     minimumFractionDigits: 0,
     maximumFractionDigits: displayDecimals,
@@ -44,20 +45,26 @@ export const sortBalancesByValue = (balances: Balance[]): Balance[] => {
 
 export const getBalancePercentage = (
   balance: Balance,
-  totalValue: number
+  totalValue: number,
 ): number => {
   if (totalValue === 0) return 0;
   return (balance.usd_value / totalValue) * 100;
 };
 
-export const hasBalances = (response: BalancesResponse | undefined): boolean => {
+export const hasBalances = (
+  response: BalancesResponse | undefined,
+): boolean => {
   return !!(response?.balances && response.balances.length > 0);
 };
 
-export const getTotalValue = (response: BalancesResponse | undefined): number => {
+export const getTotalValue = (
+  response: BalancesResponse | undefined,
+): number => {
   return response?.total_usd_value || 0;
 };
 
-export const getBalancesCount = (response: BalancesResponse | undefined): number => {
+export const getBalancesCount = (
+  response: BalancesResponse | undefined,
+): number => {
   return response?.balances?.length || 0;
 };
