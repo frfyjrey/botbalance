@@ -82,3 +82,63 @@ class HealthCheckSerializer(serializers.Serializer):
     database = serializers.DictField()
     redis = serializers.DictField()
     celery = serializers.DictField()
+
+
+class ExchangeAccountSerializer(serializers.ModelSerializer):
+    """
+    Serializer for ExchangeAccount model.
+    """
+    
+    # Hide sensitive data in responses
+    api_secret = serializers.CharField(write_only=True)
+    
+    # Read-only fields
+    last_tested_at = serializers.DateTimeField(read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)
+    updated_at = serializers.DateTimeField(read_only=True)
+    
+    class Meta:
+        from botbalance.exchanges.models import ExchangeAccount
+        model = ExchangeAccount
+        fields = [
+            "id", "exchange", "account_type", "name", "api_key", "api_secret", 
+            "testnet", "is_active", "created_at", "updated_at", "last_tested_at"
+        ]
+        read_only_fields = ["id", "created_at", "updated_at", "last_tested_at"]
+
+
+class BalanceSerializer(serializers.Serializer):
+    """
+    Serializer for account balance data.
+    """
+    
+    asset = serializers.CharField(help_text="Asset symbol (e.g., BTC, USDT)")
+    balance = serializers.DecimalField(
+        max_digits=20, 
+        decimal_places=8, 
+        help_text="Available balance"
+    )
+    usd_value = serializers.DecimalField(
+        max_digits=20, 
+        decimal_places=2, 
+        help_text="USD value of balance",
+        required=False
+    )
+
+
+class BalancesResponseSerializer(serializers.Serializer):
+    """
+    Serializer for GET /api/me/balances response.
+    """
+    
+    status = serializers.CharField(default="success")
+    exchange_account = serializers.CharField(help_text="Exchange account name")
+    account_type = serializers.CharField(help_text="Account type (spot, futures, earn)")  
+    balances = BalanceSerializer(many=True)
+    total_usd_value = serializers.DecimalField(
+        max_digits=20, 
+        decimal_places=2,
+        help_text="Total portfolio value in USD",
+        required=False
+    )
+    timestamp = serializers.DateTimeField(help_text="Response timestamp")

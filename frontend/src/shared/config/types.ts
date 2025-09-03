@@ -96,6 +96,24 @@ export interface ApiError {
   errors?: Record<string, string[]>;
 }
 
+// Balance types
+export interface Balance {
+  asset: string;
+  balance: number;
+  usd_value: number;
+}
+
+export interface BalancesResponse {
+  status: 'success' | 'error';
+  exchange_account?: string;
+  account_type?: string;
+  balances?: Balance[];
+  total_usd_value?: number;
+  timestamp?: string;
+  message?: string;
+  error_code?: string;
+}
+
 // UI State types
 export interface AppState {
   isAuthenticated: boolean;

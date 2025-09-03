@@ -14,6 +14,7 @@ import type {
   LoginRequest,
   LoginResponse,
   ApiResponse,
+  BalancesResponse,
   HealthCheckResponse,
   VersionResponse,
   TaskResponse,
@@ -187,6 +188,11 @@ export const apiClient = {
     return apiRequest<TaskStatusResponse>(
       `/api/tasks/status/?task_id=${taskId}`,
     );
+  },
+
+  // User account endpoints
+  async getBalances(): Promise<BalancesResponse> {
+    return apiRequest<BalancesResponse>('/api/me/balances/');
   },
 
   // Generic request method for custom calls

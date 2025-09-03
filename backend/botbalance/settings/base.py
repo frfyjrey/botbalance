@@ -44,8 +44,9 @@ INSTALLED_APPS = [
     "corsheaders",
     # Local apps
     "botbalance.api",
-    "botbalance.core",
+    "botbalance.core", 
     "botbalance.tasks",
+    "botbalance.exchanges",
 ]
 
 MIDDLEWARE = [

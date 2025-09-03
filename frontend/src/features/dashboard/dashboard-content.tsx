@@ -14,6 +14,7 @@ import {
 } from '@entities/task';
 import { formatDate } from '@shared/lib/utils';
 import { useThemeStore } from '@shared/lib/store';
+import { BalancesCard } from '@features/balance';
 
 export const DashboardContent = () => {
   const { t } = useTranslation('dashboard');
@@ -252,6 +253,8 @@ export const DashboardContent = () => {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Portfolio Balances */}
+          <BalancesCard className="lg:col-span-2" />
           {/* User Information */}
           <div className="card-github">
             <div
