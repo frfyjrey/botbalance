@@ -774,8 +774,8 @@ def create_portfolio_snapshot_view(request):
             # Either throttled or failed
             response_data = {
                 "status": "throttled",
-                "message": "Snapshot creation was throttled or failed. Try again later or use force=true.",
-                "error_code": "THROTTLED_OR_FAILED",
+                "message": "⏳ Snapshot creation throttled (max 1 per minute). Wait 60 seconds or use 'Force Create'.",
+                "error_code": "THROTTLED",
             }
 
         serializer = CreateSnapshotResponseSerializer(data=response_data)

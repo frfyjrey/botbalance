@@ -45,7 +45,7 @@ export const PortfolioSnapshots = () => {
         await fetchSnapshots(); // Refresh list
       } else if (response.status === 'throttled') {
         setError(
-          'Snapshot creation throttled. Wait a bit or use force option.',
+          '⏳ Throttled: Max 1 snapshot per minute. Wait 60 seconds or click "Force Create".',
         );
       } else {
         setError(response.message || 'Failed to create snapshot');
@@ -82,11 +82,24 @@ export const PortfolioSnapshots = () => {
   };
 
   const formatDateTime = (isoString: string) => {
-    return new Date(isoString).toLocaleString();
+    try {
+      return new Date(isoString).toLocaleString();
+    } catch (e) {
+      return 'Invalid Date';
+    }
   };
 
   const formatValue = (value: string, currency: string) => {
     return `${parseFloat(value).toFixed(2)} ${currency}`;
+  };
+
+  const formatShortDate = (isoString: string) => {
+    try {
+      const date = new Date(isoString);
+      return `${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')}`;
+    } catch (e) {
+      return '--';
+    }
   };
 
   return (
@@ -151,31 +164,55 @@ export const PortfolioSnapshots = () => {
           >
             NAV History
           </h4>
-          <div className="h-40 flex items-end justify-between bg-gray-50 p-4 rounded border">
-            {snapshots
-              .slice()
-              .reverse()
-              .slice(-10) // Last 10 snapshots
-              .map(snapshot => {
-                const navValue = parseFloat(snapshot.nav_quote);
-                const maxNav = Math.max(
-                  ...snapshots.map(s => parseFloat(s.nav_quote)),
-                );
-                const height = Math.max((navValue / maxNav) * 120, 10); // Min height 10px
+          <div className="h-48 bg-gradient-to-b from-blue-50 to-white p-4 rounded-lg border border-blue-200">
+            <div className="h-full flex items-end justify-between gap-1">
+              {snapshots
+                .slice()
+                .reverse()
+                .slice(-12) // Last 12 snapshots
+                .map((snapshot, index) => {
+                  const navValue = parseFloat(snapshot.nav_quote);
+                  const maxNav = Math.max(
+                    ...snapshots.map(s => parseFloat(s.nav_quote)),
+                  );
+                  const minNav = Math.min(
+                    ...snapshots.map(s => parseFloat(s.nav_quote)),
+                  );
+                  const range = maxNav - minNav;
+                  const height = range > 0 
+                    ? Math.max(((navValue - minNav) / range) * 140, 20) 
+                    : 50; // Min height 20px
 
-                return (
-                  <div key={snapshot.id} className="flex flex-col items-center">
-                    <div
-                      className="bg-blue-500 w-6 rounded-t"
-                      style={{ height: `${height}px` }}
-                      title={`${formatValue(snapshot.nav_quote, snapshot.quote_asset)} at ${formatDateTime(snapshot.ts)}`}
-                    />
-                    <span className="text-xs mt-1 text-gray-600 transform -rotate-45">
-                      {new Date(snapshot.ts).toLocaleDateString().slice(-5)}
-                    </span>
-                  </div>
-                );
-              })}
+                  // Color based on performance vs previous
+                  const isFirst = index === 0;
+                  const prevValue = !isFirst ? parseFloat(snapshots.slice().reverse().slice(-12)[index - 1].nav_quote) : navValue;
+                  const isUp = navValue >= prevValue;
+                  const barColor = isUp ? 'from-green-400 to-green-600' : 'from-red-400 to-red-600';
+
+                  return (
+                    <div key={snapshot.id} className="flex flex-col items-center group">
+                      <div
+                        className={`w-8 rounded-t-lg bg-gradient-to-t ${barColor} shadow-sm hover:shadow-md transition-all cursor-pointer relative`}
+                        style={{ height: `${height}px` }}
+                        title={`${formatValue(snapshot.nav_quote, snapshot.quote_asset)} at ${formatDateTime(snapshot.ts)}`}
+                      >
+                        {/* Hover value display */}
+                        <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                          ${parseFloat(snapshot.nav_quote).toFixed(0)}
+                        </div>
+                      </div>
+                      <span className="text-xs mt-2 text-gray-500 font-mono">
+                        {formatShortDate(snapshot.ts)}
+                      </span>
+                    </div>
+                  );
+                })}
+            </div>
+            {/* Chart legend */}
+            <div className="mt-3 flex justify-between text-xs text-gray-500">
+              <span>📈 NAV History (last 12 snapshots)</span>
+              <span>💰 Current: ${snapshots.length > 0 ? parseFloat(snapshots[0].nav_quote).toFixed(0) : '0'}</span>
+            </div>
           </div>
         </div>
       )}
