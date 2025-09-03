@@ -269,8 +269,8 @@ class PortfolioSnapshotSerializer(serializers.Serializer):
         decimal_places=8,
         help_text="Total Net Asset Value in quote currency",
     )
-    asset_count = serializers.IntegerField(
-        read_only=True, help_text="Number of assets in snapshot"
+    asset_count = serializers.SerializerMethodField(
+        help_text="Number of assets in snapshot"
     )
     source = serializers.CharField(max_length=20, help_text="How snapshot was created")
     exchange_account = serializers.CharField(
@@ -281,6 +281,19 @@ class PortfolioSnapshotSerializer(serializers.Serializer):
     created_at = serializers.DateTimeField(
         read_only=True, help_text="When snapshot was saved"
     )
+
+    def get_asset_count(self, obj) -> int:
+        """Get number of assets in this snapshot."""
+        # Handle both model instances and dicts
+        if hasattr(obj, 'get_asset_count'):
+            # PortfolioSnapshot model instance
+            return obj.get_asset_count()
+        elif isinstance(obj, dict) and 'positions' in obj:
+            # Dict from to_summary_dict() 
+            return len(obj['positions']) if obj['positions'] else 0
+        else:
+            # Fallback
+            return 0
 
 
 class PortfolioSnapshotDetailSerializer(PortfolioSnapshotSerializer):

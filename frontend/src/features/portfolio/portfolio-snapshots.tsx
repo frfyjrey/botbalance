@@ -110,42 +110,29 @@ export const PortfolioSnapshots = () => {
   const formatShortDate = (isoString: string) => {
     try {
       const date = new Date(isoString);
-      // Check if date is valid
       if (isNaN(date.getTime())) {
-        console.warn('Invalid date string:', isoString);
         return '--';
       }
       return `${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')}`;
     } catch (e) {
-      console.warn('Date parsing error:', e, 'for string:', isoString);
       return '--';
     }
   };
 
   // Prepare data for recharts
   const prepareChartData = () => {
+    if (snapshots.length === 0) return [];
+    
     return snapshots
       .slice()
       .reverse() // Oldest first for chart
       .slice(-12) // Last 12 snapshots
-      .map((snapshot, index) => {
-        const navValue = parseFloat(snapshot.nav_quote);
-        const shortDate = formatShortDate(snapshot.ts);
-        const fullDate = formatDateTime(snapshot.ts);
-        
-        // Validate data before using
-        if (isNaN(navValue) || shortDate === '--' || fullDate === 'Invalid Date') {
-          console.warn('Invalid snapshot data:', snapshot);
-        }
-        
-        return {
-          date: shortDate,
-          nav: navValue,
-          fullDate: fullDate,
-          isUp: index === 0 ? true : navValue >= parseFloat(snapshots.slice().reverse().slice(-12)[index - 1]?.nav_quote || '0'),
-        };
-      })
-      .filter(item => item.date !== '--' && !isNaN(item.nav)); // Filter out invalid data
+      .map((snapshot, index) => ({
+        date: formatShortDate(snapshot.ts),
+        nav: parseFloat(snapshot.nav_quote),
+        fullDate: formatDateTime(snapshot.ts),
+        isUp: index === 0 ? true : parseFloat(snapshot.nav_quote) >= parseFloat(snapshots.slice().reverse().slice(-12)[index - 1]?.nav_quote || '0'),
+      }));
   };
 
   const chartData = prepareChartData();
@@ -182,6 +169,7 @@ export const PortfolioSnapshots = () => {
             disabled={loading}
             size="sm"
             variant="outline"
+            className="hover:bg-gray-50 hover:border-gray-400 transition-colors duration-200"
           >
             {loading ? 'Loading...' : 'Refresh'}
           </Button>
@@ -189,6 +177,7 @@ export const PortfolioSnapshots = () => {
             onClick={() => createSnapshot(false)}
             disabled={loading}
             size="sm"
+            className="bg-blue-600 text-white hover:bg-blue-700 transition-colors duration-200 border-blue-600"
           >
             Create Snapshot
           </Button>
@@ -197,6 +186,7 @@ export const PortfolioSnapshots = () => {
             disabled={loading}
             size="sm"
             variant="outline"
+            className="border-orange-300 text-orange-600 hover:bg-orange-50 hover:border-orange-400 transition-colors duration-200"
           >
             Force Create
           </Button>
@@ -205,6 +195,7 @@ export const PortfolioSnapshots = () => {
             disabled={loading}
             size="sm"
             variant="destructive"
+            className="hover:bg-red-600 transition-colors duration-200"
           >
             Delete All
           </Button>
