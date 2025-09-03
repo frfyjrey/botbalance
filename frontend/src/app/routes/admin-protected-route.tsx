@@ -23,8 +23,8 @@ export function AdminProtectedRoute({ children }: AdminProtectedRouteProps) {
     return <Navigate to={ROUTES.LOGIN} replace />;
   }
 
-  // If user is not admin/staff, redirect to regular dashboard
-  if (!user.is_staff) {
+  // If user is not admin/staff/superuser, redirect to regular dashboard
+  if (!user.is_staff && !user.is_superuser) {
     return <Navigate to={ROUTES.DASHBOARD} replace />;
   }
 

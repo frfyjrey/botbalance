@@ -9,6 +9,9 @@ interface BalancesCardProps {
 export const BalancesCard = ({ className }: BalancesCardProps) => {
   const { t } = useTranslation('dashboard');
   const { data: balancesData, isLoading, isError, error } = useBalances();
+  
+  // Check if error is "no exchange accounts" (404)
+  const isNoAccounts = error && 'status' in error && error.status === 404;
 
   const getBalancePercentage = (balance: Balance, totalValue: number): number => {
     if (totalValue === 0) return 0;
@@ -65,10 +68,59 @@ export const BalancesCard = ({ className }: BalancesCardProps) => {
     );
   }
 
+  // Special handling for "no exchange accounts" case
+  if (isNoAccounts) {
+    return (
+      <div className={`card-github ${className}`}>
+        <div
+          className="p-4 border-b"
+          style={{ borderBottomColor: 'rgb(var(--border))' }}
+        >
+          <h3
+            className="text-base font-semibold"
+            style={{ color: 'rgb(var(--fg-default))' }}
+          >
+            {t('portfolio.title')}
+          </h3>
+        </div>
+        <div className="p-6">
+          <div className="text-center py-8">
+            <div className="mb-4">
+              <svg
+                className="w-12 h-12 mx-auto"
+                fill="none"
+                stroke="currentColor"
+                style={{ color: 'rgb(var(--fg-muted))' }}
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 4v16m8-8H4"
+                />
+              </svg>
+            </div>
+            <p
+              className="text-base font-medium mb-2"
+              style={{ color: 'rgb(var(--fg-default))' }}
+            >
+              Нет аккаунтов бирж
+            </p>
+            <p
+              className="text-sm"
+              style={{ color: 'rgb(var(--fg-muted))' }}
+            >
+              Добавьте аккаунт биржи для просмотра портфеля
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (isError) {
     const errorMessage = error?.message || t('balances.error');
-    const isNoAccounts = error && 'message' in error && 
-      error.message.includes('No active exchange accounts found');
 
     return (
       <div className={`card-github ${className}`}>

@@ -27,6 +27,10 @@ export const useBalances = (
       if (error && 'status' in error && error.status === 401) {
         return false;
       }
+      // Don't retry if no exchange accounts (404) - this is expected
+      if (error && 'status' in error && error.status === 404) {
+        return false;
+      }
       return failureCount < 3;
     },
     staleTime: 1000 * 60 * 2, // Consider data fresh for 2 minutes

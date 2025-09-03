@@ -117,8 +117,8 @@ export const DashboardContent = () => {
 
             {/* Right side - Admin link, Theme toggle & Logout buttons */}
             <div className="flex-shrink-0 ml-4 flex items-center space-x-2">
-              {/* Admin Panel Link (only for staff) */}
-              {user?.is_staff && (
+              {/* Admin Panel Link (only for staff/superusers) */}
+              {(user?.is_staff || user?.is_superuser) && (
                 <Button
                   onClick={() => navigate('/admin-dashboard')}
                   className="btn-github btn-github-secondary text-sm px-3 py-1.5"
