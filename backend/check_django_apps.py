@@ -35,7 +35,7 @@ def extract_installed_apps(settings_file: Path) -> list[str]:
                                     apps.append(item.value)
                             return apps
         return []
-    except Exception as e:
+    except (OSError, UnicodeDecodeError, SyntaxError) as e:
         print(f"❌ Error parsing {settings_file}: {e}")
         return []
 
@@ -58,7 +58,8 @@ def find_apps_with_models() -> list[str]:
                     if "models.Model" in content:
                         app_name = f"botbalance.{app_dir.name}"
                         apps_with_models.append(app_name)
-                except Exception:
+                except (OSError, UnicodeDecodeError):
+                    # Skip if file cannot be read (permissions, encoding issues, etc.)
                     continue
 
     # Also check strategies app (it's not in botbalance folder)
@@ -69,7 +70,9 @@ def find_apps_with_models() -> list[str]:
                 content = f.read()
             if "models.Model" in content:
                 apps_with_models.append("strategies")
-        except Exception:
+        except (OSError, UnicodeDecodeError) as e:
+            # Skip if file cannot be read (permissions, encoding issues, etc.)
+            print(f"⚠️ Warning: Could not read strategies/models.py: {e}")
             pass
 
     return apps_with_models

@@ -11,3 +11,4 @@ alwaysApply: true
 * вместо этого cd backend && uv run python manage.py check используй make pre-commit
 * я не люблю диаграммы, не делай их
 * проверь settings/migrate.py!
+* пиши комменты к комитам и тегам на английском
