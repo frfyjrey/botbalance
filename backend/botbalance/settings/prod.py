@@ -34,16 +34,21 @@ MIDDLEWARE = (
 LOGGING_CONFIG = None  # Disable Django's logging configuration
 LOGGING = {}
 
-# Override templates to avoid conflicts
+# Production templates with caching for performance
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
         "DIRS": [],
-        "APP_DIRS": False,  # Disable APP_DIRS
+        "APP_DIRS": True,  # Enable APP_DIRS for proper app discovery
         "OPTIONS": {
             "loaders": [
-                "django.template.loaders.filesystem.Loader",
-                "django.template.loaders.app_directories.Loader",
+                (
+                    "django.template.loaders.cached.Loader",
+                    [
+                        "django.template.loaders.filesystem.Loader",
+                        "django.template.loaders.app_directories.Loader",
+                    ],
+                ),
             ],
             "context_processors": [
                 "django.template.context_processors.request",
@@ -254,13 +259,4 @@ DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@domain.com")
 SESSION_ENGINE = "django.contrib.sessions.backends.cache"
 SESSION_CACHE_ALIAS = "default"
 
-# Template caching
-TEMPLATES[0]["OPTIONS"]["loaders"] = [
-    (
-        "django.template.loaders.cached.Loader",
-        [
-            "django.template.loaders.filesystem.Loader",
-            "django.template.loaders.app_directories.Loader",
-        ],
-    ),
-]
+# Template caching already configured above in TEMPLATES definition

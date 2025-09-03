@@ -42,12 +42,12 @@ INSTALLED_APPS = [
     "rest_framework",
     "rest_framework_simplejwt",
     "corsheaders",
-    # Local apps
-    "botbalance.api",
-    "botbalance.core",
-    "botbalance.tasks",
-    "botbalance.exchanges",
-    "strategies",
+    # Local apps - using explicit AppConfig paths for enterprise reliability
+    "botbalance.api.apps.ApiConfig",
+    "botbalance.core.apps.CoreConfig",
+    "botbalance.tasks.apps.TasksConfig",
+    "botbalance.exchanges.apps.ExchangesConfig",
+    "strategies.apps.StrategiesConfig",
 ]
 
 MIDDLEWARE = [
