@@ -159,3 +159,93 @@ class BalancesResponseSerializer(serializers.Serializer):
         required=False,
     )
     timestamp = serializers.DateTimeField(help_text="Response timestamp")
+
+
+# =============================================================================
+# PORTFOLIO SERIALIZERS (Step 2)
+# =============================================================================
+
+
+class PortfolioAssetSerializer(serializers.Serializer):
+    """Serializer for individual portfolio asset."""
+
+    symbol = serializers.CharField(
+        max_length=20, help_text="Asset symbol (e.g., BTC, ETH)"
+    )
+    balance = serializers.DecimalField(
+        max_digits=20, decimal_places=8, help_text="Asset balance amount"
+    )
+    price_usd = serializers.DecimalField(
+        max_digits=20,
+        decimal_places=8,
+        allow_null=True,
+        help_text="Current USD price per unit",
+    )
+    value_usd = serializers.DecimalField(
+        max_digits=20, decimal_places=2, help_text="Total USD value of this asset"
+    )
+    percentage = serializers.DecimalField(
+        max_digits=5, decimal_places=1, help_text="Percentage of total portfolio"
+    )
+    price_source = serializers.CharField(
+        max_length=20, help_text="Price data source (cached/fresh/mock/stablecoin)"
+    )
+
+
+class PortfolioCacheStatsSerializer(serializers.Serializer):
+    """Serializer for price cache statistics."""
+
+    cache_backend = serializers.CharField(help_text="Redis cache backend type")
+    default_ttl = serializers.IntegerField(help_text="Default cache TTL in seconds")
+    stale_threshold = serializers.IntegerField(
+        help_text="Stale price threshold in seconds"
+    )
+    supported_quotes = serializers.ListField(
+        child=serializers.CharField(), help_text="Supported quote currencies"
+    )
+
+
+class PortfolioSummarySerializer(serializers.Serializer):
+    """Serializer for complete portfolio summary."""
+
+    total_nav = serializers.DecimalField(
+        max_digits=20, decimal_places=2, help_text="Total Net Asset Value in USD"
+    )
+    assets = PortfolioAssetSerializer(
+        many=True, help_text="Individual portfolio assets"
+    )
+    quote_currency = serializers.CharField(
+        max_length=10, help_text="Quote currency for pricing (USDT)"
+    )
+    timestamp = serializers.DateTimeField(help_text="Calculation timestamp")
+    exchange_account = serializers.CharField(
+        max_length=100, help_text="Exchange account name"
+    )
+    price_cache_stats = PortfolioCacheStatsSerializer(
+        help_text="Price cache performance statistics"
+    )
+
+
+class PortfolioSummaryResponseSerializer(serializers.Serializer):
+    """Serializer for portfolio summary API response."""
+
+    status = serializers.CharField(
+        default="success", help_text="Response status (success/error)"
+    )
+    portfolio = PortfolioSummarySerializer(
+        required=False, help_text="Portfolio summary data"
+    )
+    message = serializers.CharField(
+        required=False, help_text="Response message (for errors)"
+    )
+    error_code = serializers.CharField(
+        required=False, help_text="Error code for debugging"
+    )
+
+    def validate(self, data):
+        """Validate response data consistency."""
+        if data.get("status") == "success" and not data.get("portfolio"):
+            raise serializers.ValidationError(
+                "Portfolio data is required for successful responses"
+            )
+        return data

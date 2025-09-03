@@ -4,6 +4,11 @@ import { Button } from '@shared/ui/Button';
 import { useUserProfile, getUserDisplayName, useLogout } from '@entities/user';
 import { useThemeStore } from '@shared/lib/store';
 import { BalancesCard } from '@features/balance';
+import {
+  PortfolioSummaryCard,
+  AssetAllocationChart,
+  AssetsList,
+} from '@features/portfolio';
 
 export const DashboardContent = () => {
   const { t } = useTranslation('dashboard');
@@ -229,10 +234,19 @@ export const DashboardContent = () => {
       {/* Main Content - Simple user dashboard */}
       <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         <div className="space-y-6">
-          {/* Portfolio Section */}
-          <BalancesCard />
+          {/* Portfolio Overview - Step 2 Complete */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <PortfolioSummaryCard />
+            <BalancesCard />
+          </div>
 
-          {/* Coming Soon Placeholder */}
+          {/* Portfolio Details */}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            <AssetAllocationChart />
+            <AssetsList maxItems={8} />
+          </div>
+
+          {/* Step 3 Preview - Coming Soon Placeholder */}
           <div className="card-github">
             <div
               className="p-4 border-b"

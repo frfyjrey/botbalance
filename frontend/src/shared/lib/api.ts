@@ -195,6 +195,14 @@ export const apiClient = {
     return apiRequest<BalancesResponse>('/api/me/balances/');
   },
 
+  async getPortfolioSummary(): Promise<
+    import('@entities/portfolio').PortfolioSummaryResponse
+  > {
+    return apiRequest<import('@entities/portfolio').PortfolioSummaryResponse>(
+      '/api/me/portfolio/summary/',
+    );
+  },
+
   // Generic request method for custom calls
   async request<T = unknown>(
     endpoint: string,

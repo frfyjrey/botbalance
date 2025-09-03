@@ -424,3 +424,131 @@ def user_balances_view(request):
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def portfolio_summary_view(request):
+    """
+    Get user's portfolio summary with NAV, asset allocations, and performance data.
+
+    For Step 2: Provides complete portfolio snapshot including:
+    - Total Net Asset Value (NAV) in USD
+    - Individual asset balances and values
+    - Percentage allocation of each asset
+    - Price cache statistics and data sources
+
+    Returns 200 with portfolio data or appropriate error response.
+    """
+    import asyncio
+    import logging
+
+    from botbalance.exchanges.models import ExchangeAccount
+    from botbalance.exchanges.portfolio_service import portfolio_service
+
+    from .serializers import PortfolioSummaryResponseSerializer
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        # Get user's active exchange account
+        exchange_account = ExchangeAccount.objects.filter(
+            user=request.user, is_active=True
+        ).first()
+
+        if not exchange_account:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "No active exchange accounts found. Please add an exchange account first.",
+                    "error_code": "NO_EXCHANGE_ACCOUNTS",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Calculate portfolio summary
+        sanitized_username = (
+            request.user.username.replace("\r", "").replace("\n", "")
+            if request.user.username
+            else ""
+        )
+        logger.info(f"Calculating portfolio summary for user {sanitized_username}")
+
+        portfolio_summary = asyncio.run(
+            portfolio_service.calculate_portfolio_summary(exchange_account)
+        )
+
+        if portfolio_summary is None:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Failed to calculate portfolio summary. Please try again later.",
+                    "error_code": "PORTFOLIO_CALCULATION_FAILED",
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        # Validate portfolio data
+        validation_issues = portfolio_service.validate_portfolio_data(portfolio_summary)
+        if validation_issues:
+            logger.warning(f"Portfolio validation issues: {validation_issues}")
+            # Continue anyway but log the issues
+
+        # Convert to dictionary for serialization
+        portfolio_data = {
+            "total_nav": portfolio_summary.total_nav,
+            "assets": [
+                {
+                    "symbol": asset.symbol,
+                    "balance": asset.balance,
+                    "price_usd": asset.price_usd,
+                    "value_usd": asset.value_usd,
+                    "percentage": asset.percentage,
+                    "price_source": asset.price_source,
+                }
+                for asset in portfolio_summary.assets
+            ],
+            "quote_currency": portfolio_summary.quote_currency,
+            "timestamp": portfolio_summary.timestamp,
+            "exchange_account": portfolio_summary.exchange_account,
+            "price_cache_stats": portfolio_summary.price_cache_stats,
+        }
+
+        # Serialize response
+        response_data = {
+            "status": "success",
+            "portfolio": portfolio_data,
+        }
+
+        serializer = PortfolioSummaryResponseSerializer(data=response_data)
+        if serializer.is_valid():
+            logger.info(
+                f"Portfolio summary calculated: NAV=${portfolio_summary.total_nav}, "
+                f"{len(portfolio_summary.assets)} assets"
+            )
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        else:
+            logger.error(f"Serialization errors: {serializer.errors}")
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Failed to serialize portfolio data.",
+                    "error_code": "SERIALIZATION_ERROR",
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    except Exception as e:
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.error("Error calculating portfolio summary: %s", str(e), exc_info=True)
+
+        return Response(
+            {
+                "status": "error",
+                "message": "Failed to calculate portfolio summary due to an internal error.",
+                "error_code": "PORTFOLIO_SUMMARY_ERROR",
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
