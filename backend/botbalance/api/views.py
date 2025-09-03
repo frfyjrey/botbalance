@@ -467,7 +467,8 @@ def portfolio_summary_view(request):
             )
 
         # Calculate portfolio summary
-        logger.info(f"Calculating portfolio summary for user {request.user.username}")
+        sanitized_username = request.user.username.replace('\r', '').replace('\n', '') if request.user.username else ''
+        logger.info(f"Calculating portfolio summary for user {sanitized_username}")
 
         portfolio_summary = asyncio.run(
             portfolio_service.calculate_portfolio_summary(exchange_account)

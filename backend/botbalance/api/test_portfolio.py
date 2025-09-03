@@ -207,7 +207,7 @@ class PortfolioServiceTest(TestCase):
         issues = self.portfolio_service.validate_portfolio_data(summary)
         # There might be small rounding differences, so we accept some issues
         # But no critical errors should be present
-        self.assertTrue(len(issues) <= 1)  # Allow for rounding discrepancies
+        self.assertLessEqual(len(issues), 1)  # Allow for rounding discrepancies
 
     def test_validate_portfolio_data_invalid_percentages(self):
         """Test portfolio data validation with invalid percentage sum."""
