@@ -198,8 +198,19 @@ export const AdminDashboardContent = () => {
               </div>
             </div>
 
-            {/* Right side - Theme toggle & Logout buttons */}
+            {/* Right side - User Dashboard link, Theme toggle & Logout buttons */}
             <div className="flex-shrink-0 ml-4 flex items-center space-x-2">
+              {/* User Dashboard Link */}
+              <Button
+                onClick={() => navigate('/dashboard')}
+                className="btn-github btn-github-secondary text-sm px-3 py-1.5"
+                title="Пользовательский dashboard"
+              >
+                <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+                <span className="ml-2 hidden lg:inline">Мой дашборд</span>
+              </Button>
               {/* Theme Toggle */}
               <Button
                 onClick={toggleTheme}

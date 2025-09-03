@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { Suspense, lazy } from 'react';
 import { ROUTES } from '@shared/config/constants';
 import { ProtectedRoute } from './protected-route';
+import { AdminProtectedRoute } from './admin-protected-route';
 import { AuthGuard } from './auth-guard';
 
 // Lazy load pages
@@ -51,11 +52,11 @@ export const router = createBrowserRouter([
   {
     path: ROUTES.ADMIN_DASHBOARD,
     element: (
-      <ProtectedRoute>
+      <AdminProtectedRoute>
         <SuspenseWrapper>
           <AdminDashboardPage />
         </SuspenseWrapper>
-      </ProtectedRoute>
+      </AdminProtectedRoute>
     ),
   },
   {
