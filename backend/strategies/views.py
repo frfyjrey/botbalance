@@ -45,6 +45,16 @@ def user_strategy_view(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
+    # Explicitly handle unexpected HTTP methods
+    return Response(
+        {
+            "status": "error",
+            "message": f"Method {request.method} not allowed.",
+            "error_code": "METHOD_NOT_ALLOWED",
+        },
+        status=status.HTTP_405_METHOD_NOT_ALLOWED,
+    )
+
 
 def _get_user_strategy(request):
     """Get user's current strategy."""
@@ -158,14 +168,16 @@ def _create_or_update_strategy(request):
 def rebalance_plan_view(request):
     """Calculate rebalancing plan for user's strategy."""
     try:
-        logger.info(f"Rebalance plan request from user: {request.user}")
+        sanitized_user = str(request.user).replace("\r", "").replace("\n", "")
+        logger.info(f"Rebalance plan request from user: {sanitized_user}")
 
         # Get user's strategy
         strategy = Strategy.objects.filter(user=request.user).first()
         logger.info(f"Found strategy: {strategy}")
 
         if not strategy:
-            logger.warning(f"No strategy found for user {request.user}")
+            sanitized_user = str(request.user).replace("\r", "").replace("\n", "")
+            logger.warning(f"No strategy found for user {sanitized_user}")
             return Response(
                 {
                     "status": "error",
