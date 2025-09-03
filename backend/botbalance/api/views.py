@@ -18,7 +18,11 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from botbalance.tasks.tasks import echo_task, heartbeat_task, long_running_task
 
 from .serializers import (
+    CreateSnapshotRequestSerializer,
+    CreateSnapshotResponseSerializer,
+    LatestSnapshotResponseSerializer,
     LoginSerializer,
+    SnapshotListResponseSerializer,
     TaskSerializer,
     UserSerializer,
 )
@@ -514,6 +518,42 @@ def portfolio_summary_view(request):
             "price_cache_stats": portfolio_summary.price_cache_stats,
         }
 
+        # Create portfolio snapshot asynchronously (fire-and-forget with throttling)
+        try:
+            from threading import Thread
+
+            from botbalance.exchanges.snapshot_service import snapshot_service
+
+            def create_snapshot_async():
+                """Create snapshot in background thread."""
+                try:
+                    snapshot = asyncio.run(
+                        snapshot_service.throttled_create_snapshot(
+                            user=request.user,
+                            exchange_account=exchange_account,
+                            source="summary",
+                        )
+                    )
+                    if snapshot:
+                        logger.debug(
+                            f"Created background snapshot {snapshot.id} for user {request.user.username}"
+                        )
+                    else:
+                        logger.debug(
+                            f"Snapshot creation throttled for user {request.user.username}"
+                        )
+                except Exception as e:
+                    logger.warning(
+                        f"Background snapshot creation failed for user {request.user.username}: {e}"
+                    )
+
+            # Start background thread (non-blocking)
+            Thread(target=create_snapshot_async, daemon=True).start()
+
+        except Exception as e:
+            # If snapshot creation setup fails, continue with response
+            logger.warning(f"Failed to setup background snapshot creation: {e}")
+
         # Serialize response
         response_data = {
             "status": "success",
@@ -549,6 +589,362 @@ def portfolio_summary_view(request):
                 "status": "error",
                 "message": "Failed to calculate portfolio summary due to an internal error.",
                 "error_code": "PORTFOLIO_SUMMARY_ERROR",
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+# =============================================================================
+# PORTFOLIO SNAPSHOT VIEWS (Step 2)
+# =============================================================================
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def portfolio_snapshots_list_view(request):
+    """
+    Get list of user's portfolio snapshots.
+
+    Query parameters:
+    - limit: number of snapshots to return (default 10, max 100)
+    - from: ISO timestamp to filter snapshots from
+    - to: ISO timestamp to filter snapshots to
+    """
+    import logging
+    from datetime import datetime
+
+    from botbalance.exchanges.models import ExchangeAccount
+    from botbalance.exchanges.snapshot_service import snapshot_service
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        # Parse query parameters
+        limit = min(int(request.GET.get("limit", 10)), 100)
+        from_ts = request.GET.get("from")
+        to_ts = request.GET.get("to")
+
+        # Get user's exchange account
+        exchange_account = ExchangeAccount.objects.filter(
+            user=request.user, is_active=True
+        ).first()
+
+        # Get snapshots
+        snapshots = snapshot_service.get_recent_snapshots(
+            user=request.user,
+            limit=limit + 1,  # Get one extra to check if more exist
+            exchange_account=exchange_account,
+        )
+
+        # Apply date filters if provided
+        if from_ts:
+            try:
+                from_dt = datetime.fromisoformat(from_ts.replace("Z", "+00:00"))
+                snapshots = [s for s in snapshots if s.ts >= from_dt]
+            except ValueError:
+                return Response(
+                    {
+                        "status": "error",
+                        "message": "Invalid 'from' timestamp format",
+                        "error_code": "INVALID_TIMESTAMP",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        if to_ts:
+            try:
+                to_dt = datetime.fromisoformat(to_ts.replace("Z", "+00:00"))
+                snapshots = [s for s in snapshots if s.ts <= to_dt]
+            except ValueError:
+                return Response(
+                    {
+                        "status": "error",
+                        "message": "Invalid 'to' timestamp format",
+                        "error_code": "INVALID_TIMESTAMP",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        # Check if more snapshots available
+        has_more = len(snapshots) > limit
+        if has_more:
+            snapshots = snapshots[:limit]
+
+        # Convert to summary format
+        snapshot_data = [s.to_summary_dict() for s in snapshots]
+
+        response_data = {
+            "status": "success",
+            "snapshots": snapshot_data,
+            "count": len(snapshot_data),
+            "has_more": has_more,
+        }
+
+        serializer = SnapshotListResponseSerializer(data=response_data)
+        if serializer.is_valid():
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        else:
+            logger.error(f"Serialization errors: {serializer.errors}")
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Failed to serialize snapshot data",
+                    "error_code": "SERIALIZATION_ERROR",
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    except Exception as e:
+        logger.error(
+            f"Error fetching snapshots for user {request.user.username}: {e}",
+            exc_info=True,
+        )
+        return Response(
+            {
+                "status": "error",
+                "message": "Failed to fetch portfolio snapshots",
+                "error_code": "SNAPSHOTS_FETCH_ERROR",
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def create_portfolio_snapshot_view(request):
+    """
+    Create a new portfolio snapshot for the user.
+    """
+    import asyncio
+    import logging
+
+    from botbalance.exchanges.models import ExchangeAccount
+    from botbalance.exchanges.snapshot_service import snapshot_service
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        # Validate request data
+        request_serializer = CreateSnapshotRequestSerializer(data=request.data)
+        if not request_serializer.is_valid():
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Invalid request data",
+                    "error_code": "INVALID_REQUEST",
+                    "errors": request_serializer.errors,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        force = request_serializer.validated_data["force"]
+
+        # Get user's exchange account
+        exchange_account = ExchangeAccount.objects.filter(
+            user=request.user, is_active=True
+        ).first()
+
+        # Create snapshot
+        if force:
+            # Force creation bypasses throttling
+            snapshot = asyncio.run(
+                snapshot_service.create_snapshot(
+                    user=request.user,
+                    exchange_account=exchange_account,
+                    source="summary",
+                    force=True,
+                )
+            )
+        else:
+            # Use throttled creation
+            snapshot = asyncio.run(
+                snapshot_service.throttled_create_snapshot(
+                    user=request.user,
+                    exchange_account=exchange_account,
+                    source="summary",
+                )
+            )
+
+        if snapshot:
+            response_data = {
+                "status": "success",
+                "snapshot": snapshot.to_summary_dict(),
+            }
+        else:
+            # Either throttled or failed
+            response_data = {
+                "status": "throttled",
+                "message": "Snapshot creation was throttled or failed. Try again later or use force=true.",
+                "error_code": "THROTTLED_OR_FAILED",
+            }
+
+        serializer = CreateSnapshotResponseSerializer(data=response_data)
+        if serializer.is_valid():
+            response_status = (
+                status.HTTP_201_CREATED
+                if snapshot
+                else status.HTTP_429_TOO_MANY_REQUESTS
+            )
+            return Response(serializer.data, status=response_status)
+        else:
+            logger.error(f"Serialization errors: {serializer.errors}")
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Failed to serialize response",
+                    "error_code": "SERIALIZATION_ERROR",
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    except Exception as e:
+        logger.error(
+            f"Error creating snapshot for user {request.user.username}: {e}",
+            exc_info=True,
+        )
+        return Response(
+            {
+                "status": "error",
+                "message": "Failed to create portfolio snapshot",
+                "error_code": "SNAPSHOT_CREATION_ERROR",
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def latest_portfolio_snapshot_view(request):
+    """
+    Get user's latest portfolio snapshot with full details.
+    """
+    import logging
+
+    from botbalance.exchanges.models import ExchangeAccount
+    from botbalance.exchanges.snapshot_service import snapshot_service
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        # Get user's exchange account
+        exchange_account = ExchangeAccount.objects.filter(
+            user=request.user, is_active=True
+        ).first()
+
+        # Get latest snapshot
+        snapshot = snapshot_service.get_latest_snapshot(
+            user=request.user, exchange_account=exchange_account
+        )
+
+        if snapshot:
+            snapshot_data = {
+                "id": snapshot.id,
+                "ts": snapshot.ts.isoformat(),
+                "quote_asset": snapshot.quote_asset,
+                "nav_quote": str(snapshot.nav_quote),
+                "asset_count": snapshot.get_asset_count(),
+                "source": snapshot.source,
+                "exchange_account": snapshot.exchange_account.name
+                if snapshot.exchange_account
+                else None,
+                "created_at": snapshot.created_at.isoformat(),
+                "positions": snapshot.positions,
+                "prices": snapshot.prices,
+            }
+
+            response_data = {
+                "status": "success",
+                "snapshot": snapshot_data,
+            }
+        else:
+            response_data = {
+                "status": "not_found",
+                "message": "No portfolio snapshots found for this user",
+                "error_code": "NO_SNAPSHOTS",
+            }
+
+        serializer = LatestSnapshotResponseSerializer(data=response_data)
+        if serializer.is_valid():
+            response_status = (
+                status.HTTP_200_OK if snapshot else status.HTTP_404_NOT_FOUND
+            )
+            return Response(serializer.data, status=response_status)
+        else:
+            logger.error(f"Serialization errors: {serializer.errors}")
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Failed to serialize snapshot data",
+                    "error_code": "SERIALIZATION_ERROR",
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    except Exception as e:
+        logger.error(
+            f"Error fetching latest snapshot for user {request.user.username}: {e}",
+            exc_info=True,
+        )
+        return Response(
+            {
+                "status": "error",
+                "message": "Failed to fetch latest portfolio snapshot",
+                "error_code": "LATEST_SNAPSHOT_ERROR",
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_all_portfolio_snapshots_view(request):
+    """
+    Delete all portfolio snapshots for the user (for testing purposes).
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        # Count existing snapshots
+        snapshot_count = request.user.portfolio_snapshots.count()
+
+        if snapshot_count == 0:
+            return Response(
+                {
+                    "status": "success",
+                    "message": "No snapshots to delete",
+                    "deleted_count": 0,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        # Delete all snapshots for the user
+        deleted_count, _ = request.user.portfolio_snapshots.all().delete()
+
+        logger.info(
+            f"Deleted {deleted_count} snapshots for user {request.user.username}"
+        )
+
+        return Response(
+            {
+                "status": "success",
+                "message": f"Successfully deleted {deleted_count} portfolio snapshots",
+                "deleted_count": deleted_count,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    except Exception as e:
+        logger.error(
+            f"Error deleting snapshots for user {request.user.username}: {e}",
+            exc_info=True,
+        )
+        return Response(
+            {
+                "status": "error",
+                "message": "Failed to delete portfolio snapshots",
+                "error_code": "DELETE_SNAPSHOTS_ERROR",
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )

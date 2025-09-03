@@ -8,6 +8,7 @@ import {
   PortfolioSummaryCard,
   AssetAllocationChart,
   AssetsList,
+  PortfolioSnapshots,
 } from '@features/portfolio';
 
 export const DashboardContent = () => {
@@ -52,6 +53,9 @@ export const DashboardContent = () => {
             <AssetAllocationChart />
             <AssetsList maxItems={8} />
           </div>
+
+          {/* Portfolio Snapshots - Step 2 */}
+          <PortfolioSnapshots />
 
           {/* Step 3 - Trading Strategy */}
           <div className="card-github">

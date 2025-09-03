@@ -1,11 +1,14 @@
 """
 Exchange account models.
 
-Models for storing exchange account configurations and credentials.
+Models for storing exchange account configurations and credentials and portfolio snapshots.
 """
+
+from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
 
@@ -162,3 +165,177 @@ class ExchangeAccount(models.Model):
         except Exception:
             # Connection test failed
             return False
+
+
+class PortfolioSnapshot(models.Model):
+    """
+    Portfolio snapshot storing historical NAV and asset positions.
+
+    Captures portfolio state at specific points in time for analysis,
+    reporting, and performance tracking.
+    """
+
+    SOURCE_CHOICES = [
+        ("summary", "User Summary Request"),
+        ("order_fill", "Order Execution"),
+        ("cron", "Periodic Snapshot"),
+        ("init", "Initial Backfill"),
+    ]
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="portfolio_snapshots",
+        help_text="User who owns this portfolio snapshot",
+    )
+
+    exchange_account = models.ForeignKey(
+        ExchangeAccount,
+        on_delete=models.CASCADE,
+        related_name="snapshots",
+        null=True,
+        blank=True,
+        help_text="Exchange account for this snapshot (nullable if user has no accounts)",
+    )
+
+    ts = models.DateTimeField(
+        auto_now_add=True,
+        help_text="Timestamp when snapshot was taken",
+        db_index=True,
+    )
+
+    quote_asset = models.CharField(
+        max_length=10,
+        default="USDT",
+        help_text="Base currency for NAV calculation (e.g., USDT, USD, BTC)",
+    )
+
+    nav_quote = models.DecimalField(
+        max_digits=20,
+        decimal_places=8,
+        validators=[MinValueValidator(Decimal("0"))],
+        help_text="Total Net Asset Value in quote currency",
+    )
+
+    positions = models.JSONField(
+        help_text='Asset positions as {"BTC": {"amount": "0.12", "quote_value": "7234.50"}, ...}',
+    )
+
+    prices = models.JSONField(
+        null=True,
+        blank=True,
+        help_text='Market prices at snapshot time as {"BTCUSDT": "60287.1", ...}',
+    )
+
+    source = models.CharField(
+        max_length=20,
+        choices=SOURCE_CHOICES,
+        help_text="How this snapshot was created",
+    )
+
+    strategy_version = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Version of strategy when snapshot was taken (for future use)",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-ts"]
+        verbose_name = "Portfolio Snapshot"
+        verbose_name_plural = "Portfolio Snapshots"
+
+        indexes = [
+            # Primary query pattern: user's snapshots by time
+            models.Index(fields=["user", "-ts"], name="portfolio_snapshot_user_ts"),
+            # Secondary pattern: user + exchange account by time
+            models.Index(
+                fields=["user", "exchange_account", "-ts"],
+                name="portfolio_snapshot_user_acc_ts",
+            ),
+            # For cleanup/retention queries
+            models.Index(fields=["ts", "source"], name="portfolio_snapshot_ts_source"),
+        ]
+
+    def __str__(self):
+        account_name = (
+            self.exchange_account.name if self.exchange_account else "No Account"
+        )
+        return f"{self.user.username} - {account_name} - {self.nav_quote} {self.quote_asset} ({self.ts.strftime('%Y-%m-%d %H:%M')})"
+
+    def clean(self):
+        """Validate model fields."""
+        super().clean()
+
+        # Validate quote_asset format
+        if not self.quote_asset.isupper():
+            raise ValidationError(
+                {"quote_asset": "Quote asset must be uppercase (e.g., USDT, BTC)"}
+            )
+
+        # Validate positions structure
+        if not isinstance(self.positions, dict):
+            raise ValidationError(
+                {"positions": "Positions must be a dictionary of asset data"}
+            )
+
+        # Basic validation of positions format
+        for asset, data in self.positions.items():
+            if not isinstance(data, dict):
+                raise ValidationError(
+                    {"positions": f"Position data for {asset} must be a dictionary"}
+                )
+            if "amount" not in data or "quote_value" not in data:
+                raise ValidationError(
+                    {
+                        "positions": f"Position for {asset} must have 'amount' and 'quote_value' fields"
+                    }
+                )
+
+        # Validate prices structure (if provided)
+        if self.prices and not isinstance(self.prices, dict):
+            raise ValidationError({"prices": "Prices must be a dictionary or null"})
+
+        # If exchange_account is provided, ensure it belongs to same user
+        if self.exchange_account and self.exchange_account.user != self.user:
+            raise ValidationError(
+                {
+                    "exchange_account": "Exchange account must belong to the same user as the snapshot"
+                }
+            )
+
+    def save(self, *args, **kwargs):
+        """Override save to run validation."""
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def get_asset_count(self) -> int:
+        """Get number of assets in this snapshot."""
+        return len(self.positions)
+
+    def get_largest_position(self) -> tuple[str, Decimal] | None:
+        """Get asset with largest quote value."""
+        if not self.positions:
+            return None
+
+        max_asset = max(
+            self.positions.items(),
+            key=lambda x: Decimal(str(x[1].get("quote_value", 0))),
+        )
+        return max_asset[0], Decimal(str(max_asset[1]["quote_value"]))
+
+    def to_summary_dict(self) -> dict:
+        """Convert snapshot to dictionary for API responses."""
+        return {
+            "id": self.id,
+            "ts": self.ts.isoformat(),
+            "quote_asset": self.quote_asset,
+            "nav_quote": str(self.nav_quote),
+            "asset_count": self.get_asset_count(),
+            "source": self.source,
+            "exchange_account": self.exchange_account.name
+            if self.exchange_account
+            else None,
+            "created_at": self.created_at.isoformat(),
+        }
