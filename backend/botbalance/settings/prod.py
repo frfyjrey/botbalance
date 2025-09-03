@@ -169,12 +169,6 @@ CACHES = {
         "LOCATION": os.getenv("REDIS_URL", "redis://localhost:6379/1"),
         "KEY_PREFIX": "botbalance",
         "TIMEOUT": 300,
-        "OPTIONS": {
-            "CONNECTION_POOL_KWARGS": {
-                "max_connections": 20,
-                "retry_on_timeout": True,
-            },
-        },
     }
 }
 
