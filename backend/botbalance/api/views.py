@@ -27,6 +27,18 @@ from .serializers import (
     UserSerializer,
 )
 
+
+def sanitize_for_logs(text: str) -> str:
+    """
+    Sanitize text for safe logging by removing control characters.
+
+    Prevents log injection attacks by removing newlines and carriage returns.
+    """
+    if not text:
+        return ""
+    return str(text).replace("\r\n", "").replace("\n", "").replace("\r", "")
+
+
 # =============================================================================
 # AUTHENTICATION VIEWS
 # =============================================================================
@@ -536,15 +548,15 @@ def portfolio_summary_view(request):
                     )
                     if snapshot:
                         logger.debug(
-                            f"Created background snapshot {snapshot.id} for user {request.user.username}"
+                            f"Created background snapshot {snapshot.id} for user {sanitize_for_logs(request.user.username)}"
                         )
                     else:
                         logger.debug(
-                            f"Snapshot creation throttled for user {request.user.username}"
+                            f"Snapshot creation throttled for user {sanitize_for_logs(request.user.username)}"
                         )
                 except Exception as e:
                     logger.warning(
-                        f"Background snapshot creation failed for user {request.user.username}: {e}"
+                        f"Background snapshot creation failed for user {sanitize_for_logs(request.user.username)}: {e}"
                     )
 
             # Start background thread (non-blocking)
@@ -684,7 +696,7 @@ def portfolio_snapshots_list_view(request):
 
     except Exception as e:
         logger.error(
-            f"Error fetching snapshots for user {request.user.username}: {e}",
+            f"Error fetching snapshots for user {sanitize_for_logs(request.user.username)}: {e}",
             exc_info=True,
         )
         return Response(
@@ -787,7 +799,7 @@ def create_portfolio_snapshot_view(request):
 
     except Exception as e:
         logger.error(
-            f"Error creating snapshot for user {request.user.username}: {e}",
+            f"Error creating snapshot for user {sanitize_for_logs(request.user.username)}: {e}",
             exc_info=True,
         )
         return Response(
@@ -870,7 +882,7 @@ def latest_portfolio_snapshot_view(request):
 
     except Exception as e:
         logger.error(
-            f"Error fetching latest snapshot for user {request.user.username}: {e}",
+            f"Error fetching latest snapshot for user {sanitize_for_logs(request.user.username)}: {e}",
             exc_info=True,
         )
         return Response(
@@ -911,7 +923,7 @@ def delete_all_portfolio_snapshots_view(request):
         deleted_count, _ = request.user.portfolio_snapshots.all().delete()
 
         logger.info(
-            f"Deleted {deleted_count} snapshots for user {request.user.username}"
+            f"Deleted {deleted_count} snapshots for user {sanitize_for_logs(request.user.username)}"
         )
 
         return Response(
@@ -925,7 +937,7 @@ def delete_all_portfolio_snapshots_view(request):
 
     except Exception as e:
         logger.error(
-            f"Error deleting snapshots for user {request.user.username}: {e}",
+            f"Error deleting snapshots for user {sanitize_for_logs(request.user.username)}: {e}",
             exc_info=True,
         )
         return Response(

@@ -16,6 +16,18 @@ from django.contrib.auth.models import User
 from .models import ExchangeAccount, PortfolioSnapshot
 from .portfolio_service import portfolio_service
 
+
+def sanitize_for_logs(text: str) -> str:
+    """
+    Sanitize text for safe logging by removing control characters.
+
+    Prevents log injection attacks by removing newlines and carriage returns.
+    """
+    if not text:
+        return ""
+    return str(text).replace("\r\n", "").replace("\n", "").replace("\r", "")
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -71,14 +83,14 @@ class SnapshotService:
         """
         try:
             logger.info(
-                f"Creating {source} snapshot for user {user.username}, "
+                f"Creating {source} snapshot for user {sanitize_for_logs(user.username)}, "
                 f"account: {exchange_account.name if exchange_account else 'None'}"
             )
 
             # If no exchange account, we can't calculate portfolio
             if not exchange_account:
                 logger.warning(
-                    f"User {user.username} has no active exchange account, cannot create snapshot"
+                    f"User {sanitize_for_logs(user.username)} has no active exchange account, cannot create snapshot"
                 )
                 return None
 
@@ -90,7 +102,7 @@ class SnapshotService:
 
             if not portfolio_summary:
                 logger.error(
-                    f"Failed to calculate portfolio summary for user {user.username}"
+                    f"Failed to calculate portfolio summary for user {sanitize_for_logs(user.username)}"
                 )
                 return None
 
@@ -116,7 +128,7 @@ class SnapshotService:
             snapshot = await create_snapshot_sync()
 
             logger.info(
-                f"Created snapshot {snapshot.id} for user {user.username}: "
+                f"Created snapshot {snapshot.id} for user {sanitize_for_logs(user.username)}: "
                 f"NAV={snapshot.nav_quote} {snapshot.quote_asset}, "
                 f"assets={snapshot.get_asset_count()}"
             )
@@ -125,7 +137,7 @@ class SnapshotService:
 
         except Exception as e:
             logger.error(
-                f"Failed to create snapshot for user {user.username}: {e}",
+                f"Failed to create snapshot for user {sanitize_for_logs(user.username)}: {e}",
                 exc_info=True,
             )
             return None
@@ -161,7 +173,7 @@ class SnapshotService:
             # Try to acquire throttle lock
             if not self.redis_client.set(throttle_key, "1", nx=True, ex=ttl):
                 logger.info(
-                    f"Snapshot creation for user {user.username} throttled "
+                    f"Snapshot creation for user {sanitize_for_logs(user.username)} throttled "
                     f"(recent snapshot within {ttl}s)"
                 )
                 return None
@@ -176,7 +188,7 @@ class SnapshotService:
         except redis.RedisError as e:
             # If Redis is unavailable, still create snapshot (fail open)
             logger.warning(
-                f"Redis unavailable for throttling user {user.username}: {e}. Creating snapshot anyway."
+                f"Redis unavailable for throttling user {sanitize_for_logs(user.username)}: {e}. Creating snapshot anyway."
             )
             return await self.create_snapshot(
                 user=user,
