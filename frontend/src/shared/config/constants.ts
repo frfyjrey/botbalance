@@ -48,6 +48,7 @@ export const QUERY_KEYS = {
   TASKS: 'tasks',
   TASK_STATUS: 'task-status',
   BALANCES: 'balances',
+  PORTFOLIO_SUMMARY: 'portfolio-summary',
 } as const;
 
 // Theme

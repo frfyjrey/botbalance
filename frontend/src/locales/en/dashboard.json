@@ -42,5 +42,28 @@
     "no_balances": "No Assets Found",
     "deposit_funds": "Deposit funds to see your portfolio",
     "last_updated": "Last updated"
-  }
+  },
+  "portfolio": {
+    "title": "Portfolio Summary",
+    "nav_label": "Total Net Asset Value",
+    "assets_count": "{{count}} assets",
+    "no_accounts_title": "No Exchange Accounts",
+    "no_accounts_desc": "Add an exchange account to see your portfolio",
+    "error_title": "Portfolio Unavailable",
+    "error_desc": "Unable to load portfolio data. Please try again later.",
+    "allocation_title": "Asset Allocation",
+    "chart_unavailable": "Chart Unavailable",
+    "chart_error_desc": "Unable to display asset allocation",
+    "no_assets": "No Assets",
+    "no_assets_desc": "Your portfolio is currently empty",
+    "assets_title": "Portfolio Assets",
+    "showing_assets": "Showing {{shown}} of {{total}}",
+    "asset_header": "Asset",
+    "price_header": "Price",
+    "value_header": "Value",
+    "assets_unavailable": "Assets Unavailable",
+    "assets_error_desc": "Unable to load asset details"
+  },
+  "step3_coming": "Step 3: Target Allocation - Coming Soon",
+  "step3_desc": "Strategy configuration, rebalancing plans, and automated portfolio management will be available next."
 }

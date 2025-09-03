@@ -16,6 +16,13 @@ from .price_service import price_service
 logger = logging.getLogger(__name__)
 
 
+class Balance(NamedTuple):
+    """Represents a balance entry from exchange."""
+
+    symbol: str
+    balance: Decimal
+
+
 class PortfolioAsset(NamedTuple):
     """Represents a single asset in the portfolio."""
 
@@ -131,11 +138,19 @@ class PortfolioService:
 
             # Get balances from exchange
             adapter = exchange_account.get_adapter()
-            raw_balances = await adapter.get_balances(exchange_account.account_type)
+            raw_balances_dict = await adapter.get_balances(
+                exchange_account.account_type
+            )
 
-            if not raw_balances:
+            if not raw_balances_dict:
                 logger.warning(f"No balances found for account {exchange_account.name}")
                 return None
+
+            # Convert dict to Balance objects
+            raw_balances = [
+                Balance(symbol=symbol, balance=balance)
+                for symbol, balance in raw_balances_dict.items()
+            ]
 
             # Filter out dust balances and prepare asset list
             significant_balances = [
@@ -161,7 +176,7 @@ class PortfolioService:
             total_value = Decimal("0.00")
 
             for balance in significant_balances:
-                asset_symbol = balance.asset.upper()
+                asset_symbol = balance.symbol.upper()
                 asset_balance = balance.balance
 
                 # Get USD price

@@ -43,45 +43,13 @@ class PortfolioServiceTest(TestCase):
 
         self.portfolio_service = PortfolioService()
 
-        # Mock balance data
-        self.mock_balances = [
-            type(
-                "Balance",
-                (),
-                {
-                    "asset": "BTC",
-                    "balance": Decimal("0.5"),
-                    "usd_value": Decimal("21625.25"),  # Will be recalculated
-                },
-            )(),
-            type(
-                "Balance",
-                (),
-                {
-                    "asset": "ETH",
-                    "balance": Decimal("2.0"),
-                    "usd_value": Decimal("5161.50"),  # Will be recalculated
-                },
-            )(),
-            type(
-                "Balance",
-                (),
-                {
-                    "asset": "USDT",
-                    "balance": Decimal("1000.0"),
-                    "usd_value": Decimal("1000.0"),
-                },
-            )(),
-            type(
-                "Balance",
-                (),
-                {
-                    "asset": "DUST",  # Small balance to test filtering
-                    "balance": Decimal("0.00001"),
-                    "usd_value": Decimal("0.001"),
-                },
-            )(),
-        ]
+        # Mock balance data - dict format as returned by adapters
+        self.mock_balances = {
+            "BTC": Decimal("0.5"),
+            "ETH": Decimal("2.0"),
+            "USDT": Decimal("1000.0"),
+            "DUST": Decimal("0.00001"),  # Small balance to test filtering
+        }
 
     @patch("botbalance.exchanges.portfolio_service.price_service")
     async def test_calculate_portfolio_summary_success(self, mock_price_service):
@@ -171,14 +139,8 @@ class PortfolioServiceTest(TestCase):
         """Test portfolio calculation when prices are unavailable."""
 
         mock_adapter = AsyncMock()
-        # Return balance for BTC only
-        mock_adapter.get_balances.return_value = [
-            type(
-                "Balance",
-                (),
-                {"asset": "BTC", "balance": Decimal("0.5"), "usd_value": Decimal("0")},
-            )()
-        ]
+        # Return balance for BTC only - dict format
+        mock_adapter.get_balances.return_value = {"BTC": Decimal("0.5")}
 
         # Mock the _get_asset_price method to return None for all assets
         async def mock_get_asset_price_none(asset, quote="USDT"):
