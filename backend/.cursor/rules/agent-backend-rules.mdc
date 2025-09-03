@@ -12,3 +12,4 @@ alwaysApply: true
 * я не люблю диаграммы, не делай их
 * проверь settings/migrate.py!
 * пиши комменты к комитам и тегам на английском
+* ImproperlyConfigured: app_dirs must not be set when loaders is defined.
