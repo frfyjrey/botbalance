@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@shared/ui/Button';
 import { apiClient } from '@shared/lib/api';
 import {
@@ -26,6 +26,11 @@ export const PortfolioSnapshots = () => {
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Auto-fetch snapshots on component mount
+  useEffect(() => {
+    fetchSnapshots();
+  }, []);
 
   const fetchSnapshots = async () => {
     try {
@@ -105,8 +110,14 @@ export const PortfolioSnapshots = () => {
   const formatShortDate = (isoString: string) => {
     try {
       const date = new Date(isoString);
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        console.warn('Invalid date string:', isoString);
+        return '--';
+      }
       return `${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')}`;
     } catch (e) {
+      console.warn('Date parsing error:', e, 'for string:', isoString);
       return '--';
     }
   };
@@ -117,12 +128,24 @@ export const PortfolioSnapshots = () => {
       .slice()
       .reverse() // Oldest first for chart
       .slice(-12) // Last 12 snapshots
-      .map((snapshot, index) => ({
-        date: formatShortDate(snapshot.ts),
-        nav: parseFloat(snapshot.nav_quote),
-        fullDate: formatDateTime(snapshot.ts),
-        isUp: index === 0 ? true : parseFloat(snapshot.nav_quote) >= parseFloat(snapshots.slice().reverse().slice(-12)[index - 1]?.nav_quote || '0'),
-      }));
+      .map((snapshot, index) => {
+        const navValue = parseFloat(snapshot.nav_quote);
+        const shortDate = formatShortDate(snapshot.ts);
+        const fullDate = formatDateTime(snapshot.ts);
+        
+        // Validate data before using
+        if (isNaN(navValue) || shortDate === '--' || fullDate === 'Invalid Date') {
+          console.warn('Invalid snapshot data:', snapshot);
+        }
+        
+        return {
+          date: shortDate,
+          nav: navValue,
+          fullDate: fullDate,
+          isUp: index === 0 ? true : navValue >= parseFloat(snapshots.slice().reverse().slice(-12)[index - 1]?.nav_quote || '0'),
+        };
+      })
+      .filter(item => item.date !== '--' && !isNaN(item.nav)); // Filter out invalid data
   };
 
   const chartData = prepareChartData();
