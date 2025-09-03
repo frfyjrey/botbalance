@@ -1,6 +1,15 @@
 import { useState } from 'react';
 import { Button } from '@shared/ui/Button';
 import { apiClient } from '@shared/lib/api';
+import {
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+} from 'recharts';
 
 interface Snapshot {
   id: number;
@@ -102,6 +111,36 @@ export const PortfolioSnapshots = () => {
     }
   };
 
+  // Prepare data for recharts
+  const prepareChartData = () => {
+    return snapshots
+      .slice()
+      .reverse() // Oldest first for chart
+      .slice(-12) // Last 12 snapshots
+      .map((snapshot, index) => ({
+        date: formatShortDate(snapshot.ts),
+        nav: parseFloat(snapshot.nav_quote),
+        fullDate: formatDateTime(snapshot.ts),
+        isUp: index === 0 ? true : parseFloat(snapshot.nav_quote) >= parseFloat(snapshots.slice().reverse().slice(-12)[index - 1]?.nav_quote || '0'),
+      }));
+  };
+
+  const chartData = prepareChartData();
+
+  // Custom tooltip for recharts
+  const CustomTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      return (
+        <div className="bg-gray-800 text-white px-3 py-2 rounded-lg shadow-lg">
+          <p className="font-semibold">${data.nav.toFixed(2)} USDT</p>
+          <p className="text-sm text-gray-300">{data.fullDate}</p>
+        </div>
+      );
+    }
+    return null;
+  };
+
   return (
     <div
       className="card-github p-6"
@@ -155,64 +194,57 @@ export const PortfolioSnapshots = () => {
         </div>
       )}
 
-      {/* Simple NAV Chart */}
+      {/* Beautiful NAV Chart with Recharts */}
       {snapshots.length > 0 && (
         <div className="mb-6">
-          <h4
-            className="text-md font-medium mb-3"
-            style={{ color: 'rgb(var(--fg-default))' }}
-          >
-            NAV History
-          </h4>
-          <div className="h-48 bg-gradient-to-b from-blue-50 to-white p-4 rounded-lg border border-blue-200">
-            <div className="h-full flex items-end justify-between gap-1">
-              {snapshots
-                .slice()
-                .reverse()
-                .slice(-12) // Last 12 snapshots
-                .map((snapshot, index) => {
-                  const navValue = parseFloat(snapshot.nav_quote);
-                  const maxNav = Math.max(
-                    ...snapshots.map(s => parseFloat(s.nav_quote)),
-                  );
-                  const minNav = Math.min(
-                    ...snapshots.map(s => parseFloat(s.nav_quote)),
-                  );
-                  const range = maxNav - minNav;
-                  const height = range > 0 
-                    ? Math.max(((navValue - minNav) / range) * 140, 20) 
-                    : 50; // Min height 20px
-
-                  // Color based on performance vs previous
-                  const isFirst = index === 0;
-                  const prevValue = !isFirst ? parseFloat(snapshots.slice().reverse().slice(-12)[index - 1].nav_quote) : navValue;
-                  const isUp = navValue >= prevValue;
-                  const barColor = isUp ? 'from-green-400 to-green-600' : 'from-red-400 to-red-600';
-
-                  return (
-                    <div key={snapshot.id} className="flex flex-col items-center group">
-                      <div
-                        className={`w-8 rounded-t-lg bg-gradient-to-t ${barColor} shadow-sm hover:shadow-md transition-all cursor-pointer relative`}
-                        style={{ height: `${height}px` }}
-                        title={`${formatValue(snapshot.nav_quote, snapshot.quote_asset)} at ${formatDateTime(snapshot.ts)}`}
-                      >
-                        {/* Hover value display */}
-                        <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                          ${parseFloat(snapshot.nav_quote).toFixed(0)}
-                        </div>
-                      </div>
-                      <span className="text-xs mt-2 text-gray-500 font-mono">
-                        {formatShortDate(snapshot.ts)}
-                      </span>
-                    </div>
-                  );
-                })}
+          <div className="flex justify-between items-center mb-3">
+            <h4
+              className="text-md font-medium"
+              style={{ color: 'rgb(var(--fg-default))' }}
+            >
+              📈 NAV History
+            </h4>
+            <div className="text-sm text-gray-500">
+              💰 Current: <span className="font-semibold text-green-600">${snapshots.length > 0 ? parseFloat(snapshots[0].nav_quote).toFixed(0) : '0'}</span>
             </div>
-            {/* Chart legend */}
-            <div className="mt-3 flex justify-between text-xs text-gray-500">
-              <span>📈 NAV History (last 12 snapshots)</span>
-              <span>💰 Current: ${snapshots.length > 0 ? parseFloat(snapshots[0].nav_quote).toFixed(0) : '0'}</span>
-            </div>
+          </div>
+          
+          <div className="h-64 bg-gradient-to-b from-blue-50 to-white p-4 rounded-lg border border-blue-200">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                <defs>
+                  <linearGradient id="navGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#3B82F6" stopOpacity={0.05} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                <XAxis 
+                  dataKey="date" 
+                  tick={{ fontSize: 12, fill: '#6B7280' }}
+                  axisLine={{ stroke: '#D1D5DB' }}
+                />
+                <YAxis 
+                  tick={{ fontSize: 12, fill: '#6B7280' }}
+                  axisLine={{ stroke: '#D1D5DB' }}
+                  tickFormatter={(value) => `$${value.toFixed(0)}`}
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Area
+                  type="monotone"
+                  dataKey="nav"
+                  stroke="#3B82F6"
+                  strokeWidth={3}
+                  fill="url(#navGradient)"
+                  dot={{ fill: '#3B82F6', strokeWidth: 2, r: 4 }}
+                  activeDot={{ r: 6, fill: '#1D4ED8', stroke: '#fff', strokeWidth: 2 }}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+          
+          <div className="mt-2 text-xs text-gray-500 text-center">
+            Last {Math.min(chartData.length, 12)} snapshots • Hover for details
           </div>
         </div>
       )}
