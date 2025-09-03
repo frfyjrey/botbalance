@@ -670,29 +670,17 @@ def portfolio_snapshots_list_view(request):
         if has_more:
             snapshots = snapshots[:limit]
 
-        # Convert to summary format
-        snapshot_data = [s.to_summary_dict() for s in snapshots]
-
+        # Serialize model instances directly (not data validation)
         response_data = {
             "status": "success",
-            "snapshots": snapshot_data,
-            "count": len(snapshot_data),
+            "snapshots": snapshots,  # Model instances with all fields (id, ts, created_at)
+            "count": len(snapshots),
             "has_more": has_more,
         }
 
-        serializer = SnapshotListResponseSerializer(data=response_data)
-        if serializer.is_valid():
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        else:
-            logger.error(f"Serialization errors: {serializer.errors}")
-            return Response(
-                {
-                    "status": "error",
-                    "message": "Failed to serialize snapshot data",
-                    "error_code": "SERIALIZATION_ERROR",
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+        # Use serializer for output (not validation)
+        serializer = SnapshotListResponseSerializer(response_data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     except Exception as e:
         logger.error(

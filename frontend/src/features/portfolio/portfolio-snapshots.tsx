@@ -98,7 +98,7 @@ export const PortfolioSnapshots = () => {
   const formatDateTime = (isoString: string) => {
     try {
       return new Date(isoString).toLocaleString();
-    } catch (e) {
+    } catch {
       return 'Invalid Date';
     }
   };
@@ -114,7 +114,7 @@ export const PortfolioSnapshots = () => {
         return '--';
       }
       return `${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')}`;
-    } catch (e) {
+    } catch {
       return '--';
     }
   };
@@ -122,7 +122,7 @@ export const PortfolioSnapshots = () => {
   // Prepare data for recharts
   const prepareChartData = () => {
     if (snapshots.length === 0) return [];
-    
+
     return snapshots
       .slice()
       .reverse() // Oldest first for chart
@@ -131,14 +131,27 @@ export const PortfolioSnapshots = () => {
         date: formatShortDate(snapshot.ts),
         nav: parseFloat(snapshot.nav_quote),
         fullDate: formatDateTime(snapshot.ts),
-        isUp: index === 0 ? true : parseFloat(snapshot.nav_quote) >= parseFloat(snapshots.slice().reverse().slice(-12)[index - 1]?.nav_quote || '0'),
+        isUp:
+          index === 0
+            ? true
+            : parseFloat(snapshot.nav_quote) >=
+              parseFloat(
+                snapshots.slice().reverse().slice(-12)[index - 1]?.nav_quote ||
+                  '0',
+              ),
       }));
   };
 
   const chartData = prepareChartData();
 
   // Custom tooltip for recharts
-  const CustomTooltip = ({ active, payload }: any) => {
+  const CustomTooltip = ({
+    active,
+    payload,
+  }: {
+    active?: boolean;
+    payload?: { payload: { nav: number; fullDate: string } }[];
+  }) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (
@@ -219,13 +232,22 @@ export const PortfolioSnapshots = () => {
               📈 NAV History
             </h4>
             <div className="text-sm text-gray-500">
-              💰 Current: <span className="font-semibold text-green-600">${snapshots.length > 0 ? parseFloat(snapshots[0].nav_quote).toFixed(0) : '0'}</span>
+              💰 Current:{' '}
+              <span className="font-semibold text-green-600">
+                $
+                {snapshots.length > 0
+                  ? parseFloat(snapshots[0].nav_quote).toFixed(0)
+                  : '0'}
+              </span>
             </div>
           </div>
-          
+
           <div className="h-64 bg-gradient-to-b from-blue-50 to-white p-4 rounded-lg border border-blue-200">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+              <AreaChart
+                data={chartData}
+                margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+              >
                 <defs>
                   <linearGradient id="navGradient" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
@@ -233,15 +255,15 @@ export const PortfolioSnapshots = () => {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                <XAxis 
-                  dataKey="date" 
+                <XAxis
+                  dataKey="date"
                   tick={{ fontSize: 12, fill: '#6B7280' }}
                   axisLine={{ stroke: '#D1D5DB' }}
                 />
-                <YAxis 
+                <YAxis
                   tick={{ fontSize: 12, fill: '#6B7280' }}
                   axisLine={{ stroke: '#D1D5DB' }}
-                  tickFormatter={(value) => `$${value.toFixed(0)}`}
+                  tickFormatter={value => `$${value.toFixed(0)}`}
                 />
                 <Tooltip content={<CustomTooltip />} />
                 <Area
@@ -251,12 +273,17 @@ export const PortfolioSnapshots = () => {
                   strokeWidth={3}
                   fill="url(#navGradient)"
                   dot={{ fill: '#3B82F6', strokeWidth: 2, r: 4 }}
-                  activeDot={{ r: 6, fill: '#1D4ED8', stroke: '#fff', strokeWidth: 2 }}
+                  activeDot={{
+                    r: 6,
+                    fill: '#1D4ED8',
+                    stroke: '#fff',
+                    strokeWidth: 2,
+                  }}
                 />
               </AreaChart>
             </ResponsiveContainer>
           </div>
-          
+
           <div className="mt-2 text-xs text-gray-500 text-center">
             Last {Math.min(chartData.length, 12)} snapshots • Hover for details
           </div>
@@ -281,9 +308,9 @@ export const PortfolioSnapshots = () => {
           </p>
         ) : (
           <div className="space-y-2 max-h-60 overflow-y-auto">
-            {snapshots.map(snapshot => (
+            {snapshots.map((snapshot, index) => (
               <div
-                key={snapshot.id}
+                key={snapshot.id || `snapshot-${index}`}
                 className="flex justify-between items-center p-3 rounded border"
                 style={{ backgroundColor: 'rgb(var(--canvas-default))' }}
               >

@@ -3,6 +3,7 @@ URL configuration for botbalance project.
 """
 
 from django.conf import settings
+from django.conf.urls.static import static
 from django.contrib import admin
 from django.http import JsonResponse
 from django.urls import include, path
@@ -18,9 +19,8 @@ def root_view(request):
         "debug": settings.DEBUG,
     }
 
-    # Показываем админку только в debug режиме
-    if settings.DEBUG:
-        response_data["docs"] = "/nukoadmin/"
+    # Показываем админку во всех режимах (но доступ контролируется правами)
+    response_data["admin"] = "/nukoadmin/"
 
     return JsonResponse(response_data)
 
@@ -33,3 +33,9 @@ urlpatterns = [
     # API endpoints
     path("api/", include("botbalance.api.urls")),
 ]
+
+# Serve static files during DEBUG (development)
+if settings.DEBUG:
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+    if hasattr(settings, "MEDIA_URL"):
+        urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

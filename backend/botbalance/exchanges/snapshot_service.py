@@ -98,7 +98,6 @@ class SnapshotService:
             snapshot_data = self._prepare_snapshot_data(portfolio_summary)
 
             # Create snapshot (use sync_to_async for Django ORM in async context)
-            from django.db import transaction
             from asgiref.sync import sync_to_async
 
             @sync_to_async
@@ -234,7 +233,9 @@ class SnapshotService:
         Returns:
             List of recent snapshots ordered by timestamp desc
         """
-        queryset = PortfolioSnapshot.objects.filter(user=user)
+        queryset = PortfolioSnapshot.objects.filter(user=user).select_related(
+            "exchange_account"
+        )
 
         if exchange_account:
             queryset = queryset.filter(exchange_account=exchange_account)

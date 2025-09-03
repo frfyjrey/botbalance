@@ -285,12 +285,12 @@ class PortfolioSnapshotSerializer(serializers.Serializer):
     def get_asset_count(self, obj) -> int:
         """Get number of assets in this snapshot."""
         # Handle both model instances and dicts
-        if hasattr(obj, 'get_asset_count'):
+        if hasattr(obj, "get_asset_count"):
             # PortfolioSnapshot model instance
             return obj.get_asset_count()
-        elif isinstance(obj, dict) and 'positions' in obj:
-            # Dict from to_summary_dict() 
-            return len(obj['positions']) if obj['positions'] else 0
+        elif isinstance(obj, dict) and "positions" in obj:
+            # Dict from to_summary_dict()
+            return len(obj["positions"]) if obj["positions"] else 0
         else:
             # Fallback
             return 0
