@@ -28,6 +28,7 @@ interface ExchangeAdapter {
 - Только лимитные ордера (Spot, Futures).
 - Суммы в QUOTE (USDT и др.), адаптер пересчитывает qty.
 - Проверка min notional.
+- **Биржевое округление**: поддержка `tick_size` (шаг цены) и `lot_size` (шаг количества) через `/exchangeInfo` API.
 - client_order_id для идемпотентности.
 - Rate limit и retries внутри адаптера.
 - Futures: только USDT-perps, isolated, leverage=1.

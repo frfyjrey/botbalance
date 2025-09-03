@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     "botbalance.core",
     "botbalance.tasks",
     "botbalance.exchanges",
+    "strategies",
 ]
 
 MIDDLEWARE = [

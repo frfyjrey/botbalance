@@ -8,6 +8,7 @@ import { AuthGuard } from './auth-guard';
 // Lazy load pages
 const LoginPage = lazy(() => import('@pages/login'));
 const DashboardPage = lazy(() => import('@pages/dashboard'));
+const StrategyPage = lazy(() => import('@pages/strategy'));
 const AdminDashboardPage = lazy(() => import('@pages/admin-dashboard'));
 
 // Loading fallback
@@ -45,6 +46,16 @@ export const router = createBrowserRouter([
       <ProtectedRoute>
         <SuspenseWrapper>
           <DashboardPage />
+        </SuspenseWrapper>
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: ROUTES.STRATEGY,
+    element: (
+      <ProtectedRoute>
+        <SuspenseWrapper>
+          <StrategyPage />
         </SuspenseWrapper>
       </ProtectedRoute>
     ),

@@ -31,6 +31,7 @@
 ## Step 4 — Manual Rebalance
 - [ ] Модель Order
 - [ ] place_order (BinanceAdapter)
+- [ ] Поддержка tick_size/lot_size через /exchangeInfo API  
 - [ ] POST /api/me/rebalance/execute
 - [ ] Фронт: кнопка + список ордеров
 - DoD: ордера создаются и видны

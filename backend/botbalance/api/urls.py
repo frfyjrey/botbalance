@@ -27,6 +27,7 @@ task_patterns = [
 me_patterns = [
     path("balances/", views.user_balances_view, name="balances"),
     path("portfolio/summary/", views.portfolio_summary_view, name="portfolio_summary"),
+    path("strategy/", include("strategies.urls", namespace="strategy")),
 ]
 
 urlpatterns = [
