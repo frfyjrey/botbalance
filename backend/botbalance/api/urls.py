@@ -26,6 +26,7 @@ task_patterns = [
 # User account management URLs
 me_patterns = [
     path("balances/", views.user_balances_view, name="balances"),
+    path("portfolio/summary/", views.portfolio_summary_view, name="portfolio_summary"),
 ]
 
 urlpatterns = [
