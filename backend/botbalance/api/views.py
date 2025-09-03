@@ -279,12 +279,15 @@ def task_status_view(request):
 
     except Exception as e:
         import logging
-        
+
         logger = logging.getLogger(__name__)
         logger.error("Error getting task status: %s", str(e), exc_info=True)
-        
+
         return Response(
-            {"status": "error", "message": "Failed to get task status due to an internal error."},
+            {
+                "status": "error",
+                "message": "Failed to get task status due to an internal error.",
+            },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -317,12 +320,15 @@ def list_tasks_view(request):
 
     except Exception as e:
         import logging
-        
+
         logger = logging.getLogger(__name__)
         logger.error("Error listing tasks: %s", str(e), exc_info=True)
-        
+
         return Response(
-            {"status": "error", "message": "Failed to list tasks due to an internal error."},
+            {
+                "status": "error",
+                "message": "Failed to list tasks due to an internal error.",
+            },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -406,10 +412,10 @@ def user_balances_view(request):
 
     except Exception as e:
         import logging
-        
+
         logger = logging.getLogger(__name__)
         logger.error("Error fetching balances: %s", str(e), exc_info=True)
-        
+
         return Response(
             {
                 "status": "error",
