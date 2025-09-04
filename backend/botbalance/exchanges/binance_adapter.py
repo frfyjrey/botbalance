@@ -225,6 +225,27 @@ class BinanceAdapter(ExchangeAdapter):
         """Round quantity to exchange lot size."""
         return (quantity // lot_size) * lot_size
 
+    # Normalize order according to mock exchange info (tick/lot/minNotional)
+    def normalize_order(
+        self, *, symbol: str, limit_price: Decimal, quote_amount: Decimal
+    ) -> tuple[Decimal, Decimal]:
+        """
+        Normalize price and derive base quantity per Binance tick/lot rules (mock).
+
+        Returns: (adjusted_price, adjusted_base_qty)
+        """
+        self.validate_symbol(symbol)
+        if limit_price <= 0 or quote_amount <= 0:
+            from .exceptions import InvalidOrderError
+
+            raise InvalidOrderError("limit_price and quote_amount must be > 0")
+
+        info = self._get_mock_exchange_info(symbol)
+        adjusted_price = self._round_to_tick_size(limit_price, info["tick_size"])
+        base_qty = quote_amount / adjusted_price
+        adjusted_base_qty = self._round_to_lot_size(base_qty, info["lot_size"])
+        return adjusted_price, adjusted_base_qty
+
     async def get_open_orders(
         self, *, account: str | None = None, symbol: str | None = None
     ) -> list[Order]:

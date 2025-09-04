@@ -185,3 +185,15 @@ class ExchangeAdapter(ABC):
             raise InvalidOrderError(
                 f"Invalid quote_amount: {quote_amount}. Must be > 0"
             )
+
+    # Normalization helpers
+    def normalize_order(
+        self, *, symbol: str, limit_price: Decimal, quote_amount: Decimal
+    ) -> tuple[Decimal, Decimal]:
+        """
+        Normalize order parameters according to exchange rules.
+
+        Returns a tuple of (normalized_limit_price, normalized_base_qty).
+        Default implementation raises NotImplementedError; adapters should override.
+        """
+        raise NotImplementedError("normalize_order() must be implemented by adapter")
