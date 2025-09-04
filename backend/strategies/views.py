@@ -497,6 +497,12 @@ def rebalance_execute_view(request):
             ts_tick = int(floor(timezone.now().timestamp() / 30)) * 30
 
             for index, action in enumerate(rebalance_plan.actions):
+                # Skip orders for quote currency pairs like USDTUSDT
+                if action.asset == str(rebalance_plan.quote_currency):
+                    logger.info(
+                        f"Skipping order for quote asset {action.asset} (no self-quote trades)"
+                    )
+                    continue
                 if abs(action.delta_value) < strategy.min_delta_quote:
                     logger.info(
                         f"Skipping {action.asset} delta {action.delta_value} below minimum {strategy.min_delta_quote}"
@@ -506,7 +512,12 @@ def rebalance_execute_view(request):
                 # Determine order parameters
                 symbol = action.asset + "USDT"  # Assuming USDT pairs for now
                 side = "buy" if action.delta_value > 0 else "sell"
-                quote_amount = abs(action.delta_value)
+                # Use order_amount from Engine (capped by order_size_pct)
+                quote_amount = (
+                    abs(action.order_amount)
+                    if action.order_amount is not None
+                    else abs(action.delta_value)
+                )
 
                 # Use precomputed order_price from plan (Engine logic: buy below, sell above)
                 limit_price = action.order_price

@@ -221,6 +221,9 @@ class RebalanceService:
         all_assets = set(current_allocations.keys()) | set(target_allocations.keys())
 
         for asset in sorted(all_assets):
+            # Skip quote currency itself (e.g., USDT)
+            if asset == quote_currency:
+                continue
             current_percentage = current_allocations.get(asset, Decimal("0"))
             target_percentage = target_allocations.get(asset, Decimal("0"))
             current_value = current_values.get(asset, Decimal("0"))
