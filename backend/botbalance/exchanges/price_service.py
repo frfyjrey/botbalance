@@ -32,8 +32,8 @@ class PriceService:
 
     # Cache configuration
     CACHE_PREFIX = "price:"
-    DEFAULT_TTL = 300  # 5 minutes
-    STALE_THRESHOLD = 600  # 10 minutes
+    DEFAULT_TTL = getattr(settings, "PRICING_TTL_SECONDS", 300)
+    STALE_THRESHOLD = max(2 * DEFAULT_TTL, 60)
     BATCH_SIZE = 10
 
     # Supported quote currencies for NAV calculation
@@ -81,8 +81,10 @@ class PriceService:
         """
         symbol = symbol.upper()
 
-        # Check cache first (unless force refresh)
-        if not force_refresh:
+        use_cache = getattr(settings, "PRICING_USE_CACHE", True)
+
+        # Check cache first (unless force refresh or disabled by settings)
+        if use_cache and not force_refresh:
             cached_data = self._get_cache_data(symbol)
             if cached_data:
                 cached_time = datetime.fromisoformat(cached_data["timestamp"])
@@ -106,7 +108,8 @@ class PriceService:
             )
 
             fresh_price = await adapter.get_price(symbol)
-            self._set_cache_data(symbol, fresh_price)
+            if use_cache:
+                self._set_cache_data(symbol, fresh_price)
 
             logger.info(f"Fetched fresh price for {symbol}: ${fresh_price}")
             return fresh_price
@@ -115,10 +118,11 @@ class PriceService:
             logger.error(f"Failed to fetch price for {symbol}: {e}")
 
             # Fallback to stale cache if available
-            cached_data = self._get_cache_data(symbol)
-            if cached_data:
-                logger.warning(f"Using stale cached price for {symbol}")
-                return Decimal(str(cached_data["price"]))
+            if use_cache:
+                cached_data = self._get_cache_data(symbol)
+                if cached_data:
+                    logger.warning(f"Using stale cached price for {symbol}")
+                    return Decimal(str(cached_data["price"]))
 
             return None
 

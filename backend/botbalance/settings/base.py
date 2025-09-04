@@ -140,6 +140,28 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
 # =============================================================================
+# BOTBALANCE SETTINGS
+# =============================================================================
+
+# Exchange environment: mock | testnet | mainnet
+EXCHANGE_ENV = os.getenv("EXCHANGE_ENV", "mock").lower()
+
+# Pricing service configuration
+PRICING_SOURCE = os.getenv("PRICING_SOURCE", "mid").lower()  # mid | last
+PRICING_USE_CACHE = os.getenv("PRICING_USE_CACHE", "true").lower() == "true"
+PRICING_TTL_SECONDS = int(os.getenv("PRICING_TTL_SECONDS", "300"))
+
+# Optional system testnet account (only used when EXCHANGE_ENV=testnet and enabled)
+ENABLE_SYSTEM_TESTNET_ACCOUNT = (
+    os.getenv("ENABLE_SYSTEM_TESTNET_ACCOUNT", "false").lower() == "true"
+)
+BINANCE_SPOT_TESTNET_API_KEY = os.getenv("BINANCE_SPOT_TESTNET_API_KEY", "")
+BINANCE_SPOT_TESTNET_API_SECRET = os.getenv("BINANCE_SPOT_TESTNET_API_SECRET", "")
+
+# Use live exchange HTTP calls (disabled by default; unit tests rely on mocks)
+USE_LIVE_EXCHANGE = os.getenv("USE_LIVE_EXCHANGE", "false").lower() == "true"
+
+# =============================================================================
 # DJANGO REST FRAMEWORK
 # =============================================================================
 
