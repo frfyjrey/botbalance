@@ -1,10 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 import { Button } from '@shared/ui/Button';
 import {
   useRebalancePlan,
   useRefreshRebalancePlan,
+  useExecuteRebalance,
   type RebalanceAction,
+  type RebalanceExecuteResponse,
+  type RebalanceOrder,
   ACTION_COLORS,
   ACTION_LABELS,
 } from '@entities/strategy';
@@ -117,12 +120,29 @@ const ActionRow: React.FC<ActionRowProps> = ({ action }) => {
 export const RebalancePlan: React.FC<RebalancePlanProps> = ({ className }) => {
   const { data: response, isLoading, error, refetch } = useRebalancePlan();
   const refreshPlan = useRefreshRebalancePlan();
+  const executeRebalance = useExecuteRebalance();
+
+  const [executionResult, setExecutionResult] =
+    useState<RebalanceExecuteResponse | null>(null);
 
   const handleRefresh = async () => {
     try {
       await refreshPlan.mutateAsync();
+      // Clear execution result when refreshing plan
+      setExecutionResult(null);
     } catch (error) {
       console.error('Failed to refresh rebalance plan:', error);
+    }
+  };
+
+  const handleExecuteRebalance = async () => {
+    try {
+      const result = await executeRebalance.mutateAsync({
+        force_refresh_prices: false,
+      });
+      setExecutionResult(result);
+    } catch (error) {
+      console.error('Failed to execute rebalance:', error);
     }
   };
 
@@ -236,13 +256,24 @@ export const RebalancePlan: React.FC<RebalancePlanProps> = ({ className }) => {
               {parseFloat(plan.portfolio_nav).toLocaleString()}
             </p>
           </div>
-          <Button
-            onClick={handleRefresh}
-            disabled={refreshPlan.isPending}
-            className="btn-github btn-github-secondary text-sm"
-          >
-            {refreshPlan.isPending ? 'Refreshing...' : 'Refresh'}
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              onClick={handleRefresh}
+              disabled={refreshPlan.isPending}
+              className="btn-github btn-github-secondary text-sm"
+            >
+              {refreshPlan.isPending ? 'Refreshing...' : 'Refresh'}
+            </Button>
+            {plan.rebalance_needed && plan.orders_needed > 0 && (
+              <Button
+                onClick={handleExecuteRebalance}
+                disabled={executeRebalance.isPending}
+                className="btn-github btn-github-primary text-sm"
+              >
+                {executeRebalance.isPending ? 'Executing...' : 'Rebalance now'}
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -408,6 +439,109 @@ export const RebalancePlan: React.FC<RebalancePlanProps> = ({ className }) => {
               >
                 No rebalancing needed at this time
               </p>
+            </div>
+          </div>
+        )}
+
+        {/* Execution Result */}
+        {executionResult && (
+          <div
+            className="mt-6 p-4 rounded"
+            style={{
+              backgroundColor:
+                executionResult.status === 'success'
+                  ? 'rgb(var(--success-subtle))'
+                  : 'rgb(var(--danger-subtle))',
+              borderColor:
+                executionResult.status === 'success'
+                  ? 'rgb(var(--success-muted))'
+                  : 'rgb(var(--danger-muted))',
+              borderWidth: '1px',
+            }}
+          >
+            <div className="flex items-start gap-3">
+              <span className="text-lg">
+                {executionResult.status === 'success' ? '✅' : '❌'}
+              </span>
+              <div className="flex-1">
+                <h4
+                  className="font-medium mb-2"
+                  style={{ color: 'rgb(var(--fg-default))' }}
+                >
+                  {executionResult.status === 'success'
+                    ? 'Rebalance Executed Successfully'
+                    : 'Rebalance Failed'}
+                </h4>
+                <p
+                  className="text-sm mb-3"
+                  style={{ color: 'rgb(var(--fg-muted))' }}
+                >
+                  {executionResult.message}
+                </p>
+
+                {executionResult.status === 'success' &&
+                  executionResult.orders && (
+                    <div>
+                      <p
+                        className="text-sm font-medium mb-3"
+                        style={{ color: 'rgb(var(--fg-default))' }}
+                      >
+                        Created {executionResult.orders_created} orders (Total:
+                        $
+                        {parseFloat(
+                          executionResult.total_delta || '0',
+                        ).toLocaleString()}
+                        )
+                      </p>
+                      <div className="space-y-2">
+                        {executionResult.orders.map((order: RebalanceOrder) => (
+                          <div
+                            key={order.id}
+                            className="flex justify-between items-center text-sm p-2 rounded"
+                            style={{
+                              backgroundColor: 'rgb(var(--canvas-subtle))',
+                            }}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`px-2 py-1 rounded text-xs font-medium ${
+                                  order.side === 'buy'
+                                    ? 'bg-green-100 text-green-700'
+                                    : 'bg-red-100 text-red-700'
+                                }`}
+                              >
+                                {order.side.toUpperCase()}
+                              </span>
+                              <span
+                                className="font-medium"
+                                style={{ color: 'rgb(var(--fg-default))' }}
+                              >
+                                {order.symbol}
+                              </span>
+                              <span style={{ color: 'rgb(var(--fg-muted))' }}>
+                                $
+                                {parseFloat(
+                                  order.quote_amount,
+                                ).toLocaleString()}{' '}
+                                @ $
+                                {parseFloat(order.limit_price).toLocaleString()}
+                              </span>
+                            </div>
+                            <span
+                              className="text-xs px-2 py-1 rounded"
+                              style={{
+                                backgroundColor: 'rgb(var(--accent-subtle))',
+                                color: 'rgb(var(--accent-fg))',
+                              }}
+                            >
+                              {order.status}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+              </div>
             </div>
           </div>
         )}

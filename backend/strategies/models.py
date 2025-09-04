@@ -293,3 +293,275 @@ class RebalanceExecution(models.Model):
         self.error_message = error_message
         self.completed_at = timezone.now()
         self.save(update_fields=["status", "error_message", "completed_at"])
+
+
+class Order(models.Model):
+    """
+    Trading order for Step 4: Manual Rebalance.
+
+    Represents a limit order placed on an exchange as part of strategy execution.
+    Stores order details, status tracking, and links to rebalancing execution.
+    """
+
+    # Order status choices - aligned with exchange adapter
+    STATUS_CHOICES = [
+        ("pending", "Pending"),  # Order created but not yet sent to exchange
+        ("submitted", "Submitted"),  # Order sent to exchange, waiting for confirmation
+        ("open", "Open"),  # Order accepted by exchange, waiting for fills
+        ("filled", "Filled"),  # Order completely filled
+        ("cancelled", "Cancelled"),  # Order cancelled (by user or system)
+        ("rejected", "Rejected"),  # Order rejected by exchange
+        ("failed", "Failed"),  # Technical error during order processing
+    ]
+
+    SIDE_CHOICES = [
+        ("buy", "Buy"),
+        ("sell", "Sell"),
+    ]
+
+    # Foreign key relationships
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="orders",
+        help_text="User who owns this order",
+    )
+
+    strategy = models.ForeignKey(
+        Strategy,
+        on_delete=models.CASCADE,
+        related_name="orders",
+        help_text="Strategy this order belongs to",
+    )
+
+    execution = models.ForeignKey(
+        RebalanceExecution,
+        on_delete=models.CASCADE,
+        related_name="orders",
+        null=True,
+        blank=True,
+        help_text="Rebalance execution this order belongs to (if any)",
+    )
+
+    # Order identifiers
+    exchange_order_id = models.CharField(
+        max_length=100,
+        unique=True,
+        null=True,
+        blank=True,
+        help_text="Exchange-specific order ID (set after submission)",
+    )
+
+    client_order_id = models.CharField(
+        max_length=100, unique=True, help_text="Client-side order ID for idempotency"
+    )
+
+    # Order details
+    exchange = models.CharField(
+        max_length=20, default="binance", help_text="Exchange where order was placed"
+    )
+
+    symbol = models.CharField(
+        max_length=20, help_text="Trading pair symbol (e.g., 'BTCUSDT')"
+    )
+
+    side = models.CharField(
+        max_length=4, choices=SIDE_CHOICES, help_text="Order side - buy or sell"
+    )
+
+    status = models.CharField(
+        max_length=10,
+        choices=STATUS_CHOICES,
+        default="pending",
+        help_text="Current order status",
+    )
+
+    # Pricing and amounts
+    limit_price = models.DecimalField(
+        max_digits=20, decimal_places=8, help_text="Limit price for the order"
+    )
+
+    quote_amount = models.DecimalField(
+        max_digits=20,
+        decimal_places=8,
+        help_text="Order amount in quote currency (USDT, etc.)",
+    )
+
+    filled_amount = models.DecimalField(
+        max_digits=20,
+        decimal_places=8,
+        default=Decimal("0.00000000"),
+        help_text="Actually filled amount in quote currency",
+    )
+
+    # Fees (will be populated after fills)
+    fee_amount = models.DecimalField(
+        max_digits=20,
+        decimal_places=8,
+        default=Decimal("0.00000000"),
+        help_text="Trading fees paid",
+    )
+
+    fee_asset = models.CharField(
+        max_length=10,
+        blank=True,
+        help_text="Asset used for fee payment (e.g., 'BNB', 'USDT')",
+    )
+
+    # Timestamps
+    created_at = models.DateTimeField(
+        auto_now_add=True, help_text="When order was created in our system"
+    )
+
+    submitted_at = models.DateTimeField(
+        null=True, blank=True, help_text="When order was submitted to exchange"
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True, help_text="Last time order status was updated"
+    )
+
+    filled_at = models.DateTimeField(
+        null=True, blank=True, help_text="When order was completely filled"
+    )
+
+    # Error tracking
+    error_message = models.TextField(
+        blank=True, help_text="Error message if order failed"
+    )
+
+    # Exchange-specific data (JSON field for flexibility)
+    exchange_data = models.JSONField(
+        null=True, blank=True, help_text="Raw exchange response data for debugging"
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Order"
+        verbose_name_plural = "Orders"
+
+        indexes = [
+            # Main query patterns
+            models.Index(fields=["user", "-created_at"], name="orders_user_created"),
+            models.Index(
+                fields=["strategy", "-created_at"], name="orders_strategy_created"
+            ),
+            models.Index(
+                fields=["status", "-created_at"], name="orders_status_created"
+            ),
+            models.Index(fields=["exchange_order_id"], name="orders_exchange_id"),
+            models.Index(fields=["client_order_id"], name="orders_client_id"),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} - {self.symbol} {self.side} {self.quote_amount} @ {self.limit_price} ({self.status})"
+
+    def clean(self):
+        """Validate model fields."""
+        super().clean()
+
+        # Validate symbol format
+        if not self.symbol or len(self.symbol) < 3:
+            raise ValidationError({"symbol": "Symbol must be at least 3 characters"})
+
+        # Validate amounts
+        if self.quote_amount <= 0:
+            raise ValidationError(
+                {"quote_amount": "Quote amount must be greater than 0"}
+            )
+
+        if self.limit_price <= 0:
+            raise ValidationError({"limit_price": "Limit price must be greater than 0"})
+
+        if self.filled_amount < 0:
+            raise ValidationError({"filled_amount": "Filled amount cannot be negative"})
+
+        if self.filled_amount > self.quote_amount:
+            raise ValidationError(
+                {"filled_amount": "Filled amount cannot exceed quote amount"}
+            )
+
+    def save(self, *args, **kwargs):
+        """Override save to run validation."""
+        # Ensure symbol is uppercase
+        if self.symbol:
+            self.symbol = self.symbol.upper()
+
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    @property
+    def is_filled(self) -> bool:
+        """Check if order is completely filled."""
+        return self.status == "filled"
+
+    @property
+    def is_active(self) -> bool:
+        """Check if order is still active (can be filled/cancelled)."""
+        return self.status in ["pending", "submitted", "open"]
+
+    @property
+    def fill_percentage(self) -> Decimal:
+        """Calculate fill percentage."""
+        if self.quote_amount == 0:
+            return Decimal("0")
+        return (self.filled_amount / self.quote_amount) * Decimal("100")
+
+    def mark_submitted(self, exchange_order_id: str):
+        """Mark order as submitted to exchange."""
+        self.status = "submitted"
+        self.exchange_order_id = exchange_order_id
+        self.submitted_at = timezone.now()
+        self.save(update_fields=["status", "exchange_order_id", "submitted_at"])
+
+    def mark_open(self):
+        """Mark order as open (accepted by exchange)."""
+        self.status = "open"
+        self.save(update_fields=["status"])
+
+    def mark_filled(
+        self,
+        filled_amount: Decimal | None = None,
+        fee_amount: Decimal | None = None,
+        fee_asset: str | None = None,
+    ):
+        """Mark order as filled with optional fill details."""
+        self.status = "filled"
+        self.filled_at = timezone.now()
+
+        if filled_amount is not None:
+            self.filled_amount = filled_amount
+
+        if fee_amount is not None:
+            self.fee_amount = fee_amount
+
+        if fee_asset is not None:
+            self.fee_asset = fee_asset
+
+        self.save(
+            update_fields=[
+                "status",
+                "filled_at",
+                "filled_amount",
+                "fee_amount",
+                "fee_asset",
+            ]
+        )
+
+    def mark_cancelled(self):
+        """Mark order as cancelled."""
+        self.status = "cancelled"
+        self.save(update_fields=["status"])
+
+    def mark_rejected(self, error_message: str = ""):
+        """Mark order as rejected by exchange."""
+        self.status = "rejected"
+        if error_message:
+            self.error_message = error_message
+        self.save(update_fields=["status", "error_message"])
+
+    def mark_failed(self, error_message: str):
+        """Mark order as failed due to technical error."""
+        self.status = "failed"
+        self.error_message = error_message
+        self.save(update_fields=["status", "error_message"])

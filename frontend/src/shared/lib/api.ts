@@ -311,6 +311,18 @@ export const apiClient = {
     return apiRequest<import('@entities/strategy').RebalancePlanResponse>(url);
   },
 
+  async executeRebalance(
+    data: import('@entities/strategy').RebalanceExecuteRequest,
+  ): Promise<import('@entities/strategy').RebalanceExecuteResponse> {
+    return apiRequest<import('@entities/strategy').RebalanceExecuteResponse>(
+      '/api/me/strategy/rebalance/execute/',
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      },
+    );
+  },
+
   // Generic request method for custom calls
   async request<T = unknown>(
     endpoint: string,

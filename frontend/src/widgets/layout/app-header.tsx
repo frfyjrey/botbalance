@@ -3,16 +3,11 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 import { Button } from '@shared/ui/Button';
-import { useUserProfile, getUserDisplayName, useLogout } from '@entities/user';
+import { useUserProfile, useLogout } from '@entities/user';
 import { useThemeStore } from '@shared/lib/store';
 import { ROUTES } from '@shared/config/constants';
 
-interface AppHeaderProps {
-  title?: string;
-  subtitle?: string;
-}
-
-export const AppHeader: React.FC<AppHeaderProps> = ({ title, subtitle }) => {
+export const AppHeader: React.FC = () => {
   const { t } = useTranslation(['common', 'auth']);
   const navigate = useNavigate();
   const location = useLocation();
@@ -106,56 +101,37 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ title, subtitle }) => {
         borderBottomColor: 'rgb(var(--border))',
       }}
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between py-4 min-h-[60px]">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8">
+        <div className="flex items-center justify-between py-3 sm:py-4 min-h-[56px] sm:min-h-[60px]">
           {/* Left side - Logo and navigation */}
-          <div className="flex items-center space-x-6">
-            <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-3 sm:space-x-6">
+            <div className="flex items-center space-x-2 sm:space-x-3">
               <div
-                className="w-8 h-8 rounded-full flex items-center justify-center cursor-pointer"
+                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center cursor-pointer flex-shrink-0"
                 style={{ backgroundColor: 'rgb(var(--fg-default))' }}
                 onClick={() => navigate(ROUTES.DASHBOARD)}
               >
                 <span
-                  className="text-sm font-bold"
+                  className="text-xs sm:text-sm font-bold"
                   style={{ color: 'rgb(var(--fg-onEmphasis))' }}
                 >
                   B
                 </span>
               </div>
 
-              {title ? (
-                <div>
-                  <h1
-                    className="text-lg font-semibold"
-                    style={{ color: 'rgb(var(--fg-default))' }}
-                  >
-                    {title}
-                  </h1>
-                  {subtitle && (
-                    <p
-                      className="text-sm"
-                      style={{ color: 'rgb(var(--fg-muted))' }}
-                    >
-                      {subtitle}
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <h1
-                  className="text-lg font-semibold"
-                  style={{ color: 'rgb(var(--fg-default))' }}
-                >
-                  BotBalance
-                </h1>
-              )}
+              <h1
+                className="text-base sm:text-lg font-semibold truncate"
+                style={{ color: 'rgb(var(--fg-default))' }}
+              >
+                BotBalance
+              </h1>
             </div>
 
-            {/* Navigation */}
-            <nav className="flex items-center space-x-4">
+            {/* Navigation - скрыто на мобильных, показано на планшетах+ */}
+            <nav className="hidden md:flex items-center space-x-3 sm:space-x-4">
               <Button
                 onClick={() => navigate(ROUTES.DASHBOARD)}
-                className={`btn-github text-sm ${
+                className={`btn-github text-xs sm:text-sm px-2 sm:px-3 py-1 sm:py-1.5 ${
                   isCurrentRoute(ROUTES.DASHBOARD)
                     ? 'btn-github-secondary'
                     : 'btn-github-invisible'
@@ -165,7 +141,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ title, subtitle }) => {
               </Button>
               <Button
                 onClick={() => navigate(ROUTES.STRATEGY)}
-                className={`btn-github text-sm ${
+                className={`btn-github text-xs sm:text-sm px-2 sm:px-3 py-1 sm:py-1.5 ${
                   isCurrentRoute(ROUTES.STRATEGY)
                     ? 'btn-github-secondary'
                     : 'btn-github-invisible'
@@ -177,16 +153,16 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ title, subtitle }) => {
           </div>
 
           {/* Right side - User controls */}
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-1 sm:space-x-2">
             {/* Admin Panel Link (only for staff/superusers) */}
             {(user?.is_staff || user?.is_superuser) && (
               <Button
                 onClick={() => navigate(ROUTES.ADMIN_DASHBOARD)}
-                className="btn-github btn-github-secondary text-sm px-3 py-1.5"
+                className="btn-github btn-github-secondary text-xs sm:text-sm px-2 sm:px-3 py-1 sm:py-1.5"
                 title="Панель администратора"
               >
                 <svg
-                  className="w-3 h-3 sm:w-4 sm:h-4"
+                  className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -204,57 +180,47 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ title, subtitle }) => {
                     d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
                   />
                 </svg>
-                <span className="ml-2 hidden lg:inline">Admin</span>
+                <span className="hidden md:inline ml-1 sm:ml-2">Admin</span>
               </Button>
             )}
 
             {/* Theme Toggle */}
             <Button
               onClick={toggleTheme}
-              className="btn-github btn-github-secondary text-sm px-3 py-1.5"
+              className="btn-github btn-github-invisible p-1 sm:p-2"
               title={`Текущая тема: ${getThemeLabel()}`}
             >
               {getThemeIcon()}
-              <span className="ml-2 hidden lg:inline">{getThemeLabel()}</span>
             </Button>
 
             {/* User Menu */}
-            <div className="flex items-center space-x-2">
-              <span
-                className="text-sm hidden sm:inline"
-                style={{ color: 'rgb(var(--fg-muted))' }}
-              >
-                {user ? getUserDisplayName(user) : 'User'}
+            <Button
+              onClick={handleLogout}
+              disabled={logout.isPending}
+              className="btn-github btn-github-secondary text-xs sm:text-sm px-2 sm:px-3 py-1 sm:py-1.5"
+              title={t('auth:logout')}
+            >
+              {logout.isPending ? (
+                <div className="w-3 h-3 sm:w-4 sm:h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin flex-shrink-0" />
+              ) : (
+                <svg
+                  className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                  />
+                </svg>
+              )}
+              <span className="hidden md:inline ml-1 sm:ml-2">
+                {t('auth:logout')}
               </span>
-
-              <Button
-                onClick={handleLogout}
-                disabled={logout.isPending}
-                className="btn-github btn-github-secondary text-sm px-3 py-1.5"
-                title={t('auth:logout')}
-              >
-                {logout.isPending ? (
-                  <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
-                ) : (
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                    />
-                  </svg>
-                )}
-                <span className="ml-2 hidden sm:inline">
-                  {t('auth:logout')}
-                </span>
-              </Button>
-            </div>
+            </Button>
           </div>
         </div>
       </div>

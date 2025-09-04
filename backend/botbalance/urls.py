@@ -19,8 +19,7 @@ def root_view(request):
         "debug": settings.DEBUG,
     }
 
-    # Показываем админку во всех режимах (но доступ контролируется правами)
-    response_data["admin"] = "/nukoadmin/"
+    # Админка скрыта из публичного API (доступ по прямой ссылке для авторизованных)
 
     return JsonResponse(response_data)
 

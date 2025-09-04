@@ -68,6 +68,32 @@ export interface RebalancePlanResponse {
   error_code?: string;
 }
 
+export interface RebalanceExecuteRequest {
+  force_refresh_prices?: boolean;
+}
+
+export interface RebalanceOrder {
+  id: number;
+  exchange_order_id: string;
+  symbol: string;
+  side: 'buy' | 'sell';
+  status: string;
+  limit_price: string;
+  quote_amount: string;
+  created_at: string;
+}
+
+export interface RebalanceExecuteResponse {
+  status: 'success' | 'error';
+  message: string;
+  execution_id?: number;
+  orders_created?: number;
+  total_delta?: string;
+  nav?: string;
+  orders?: RebalanceOrder[];
+  error_code?: string;
+}
+
 // Request types for API
 export interface StrategyCreateRequest {
   name?: string;

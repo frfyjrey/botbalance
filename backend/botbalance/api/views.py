@@ -16,6 +16,7 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from botbalance.tasks.tasks import echo_task, heartbeat_task, long_running_task
+from strategies.models import Order
 
 from .serializers import (
     CreateSnapshotRequestSerializer,
@@ -945,6 +946,123 @@ def delete_all_portfolio_snapshots_view(request):
                 "status": "error",
                 "message": "Failed to delete portfolio snapshots",
                 "error_code": "DELETE_SNAPSHOTS_ERROR",
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def user_orders_view(request):
+    """
+    Get user's orders with filtering and pagination.
+
+    Query parameters:
+    - limit: Number of orders to return (default: 50, max: 200)
+    - offset: Offset for pagination (default: 0)
+    - status: Filter by order status (pending, submitted, open, filled, cancelled, rejected, failed)
+    - symbol: Filter by trading symbol (e.g., 'BTCUSDT')
+    - side: Filter by order side (buy, sell)
+
+    Returns:
+    - orders: List of user orders
+    - total: Total number of orders (without limit/offset)
+    - has_more: Whether there are more orders available
+    """
+    try:
+        # Parse query parameters
+        limit = min(
+            int(request.GET.get("limit", 50)), 200
+        )  # Max 200 orders per request
+        offset = max(int(request.GET.get("offset", 0)), 0)
+        status_filter = request.GET.get("status")
+        symbol_filter = request.GET.get("symbol")
+        side_filter = request.GET.get("side")
+
+        # Build query
+        orders_qs = Order.objects.filter(user=request.user)
+
+        if status_filter:
+            orders_qs = orders_qs.filter(status=status_filter)
+        if symbol_filter:
+            orders_qs = orders_qs.filter(symbol__iexact=symbol_filter)
+        if side_filter:
+            orders_qs = orders_qs.filter(side=side_filter)
+
+        # Get total count
+        total_count = orders_qs.count()
+
+        # Apply pagination
+        orders = orders_qs.select_related("strategy", "execution")[
+            offset : offset + limit
+        ]
+
+        # Prepare response data
+        orders_data = []
+        for order in orders:
+            orders_data.append(
+                {
+                    "id": order.id,
+                    "exchange_order_id": order.exchange_order_id,
+                    "client_order_id": order.client_order_id,
+                    "exchange": order.exchange,
+                    "symbol": order.symbol,
+                    "side": order.side,
+                    "status": order.status,
+                    "limit_price": str(order.limit_price),
+                    "quote_amount": str(order.quote_amount),
+                    "filled_amount": str(order.filled_amount),
+                    "fill_percentage": str(order.fill_percentage),
+                    "fee_amount": str(order.fee_amount),
+                    "fee_asset": order.fee_asset,
+                    "created_at": order.created_at.isoformat(),
+                    "submitted_at": order.submitted_at.isoformat()
+                    if order.submitted_at
+                    else None,
+                    "filled_at": order.filled_at.isoformat()
+                    if order.filled_at
+                    else None,
+                    "updated_at": order.updated_at.isoformat(),
+                    "error_message": order.error_message,
+                    "strategy_name": order.strategy.name if order.strategy else None,
+                    "execution_id": order.execution.id if order.execution else None,
+                    "is_active": order.is_active,
+                }
+            )
+
+        has_more = offset + limit < total_count
+
+        return Response(
+            {
+                "status": "success",
+                "orders": orders_data,
+                "total": total_count,
+                "limit": limit,
+                "offset": offset,
+                "has_more": has_more,
+            }
+        )
+
+    except ValueError as e:
+        return Response(
+            {
+                "status": "error",
+                "message": f"Invalid query parameter: {str(e)}",
+                "error_code": "INVALID_PARAMETER",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except Exception as e:
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error in user_orders_view: {e}", exc_info=True)
+
+        return Response(
+            {
+                "status": "error",
+                "message": "Failed to fetch orders",
+                "error_code": "ORDERS_FETCH_ERROR",
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )

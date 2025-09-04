@@ -63,19 +63,29 @@ class TestBinanceAdapter:
         with pytest.raises(FeatureNotEnabledError):
             self.adapter.validate_account_type("earn")
 
-    def test_order_methods_not_implemented(self):
-        """Test order methods raise FeatureNotEnabledError in Step 1."""
+    def test_place_order_implemented(self):
+        """Test place_order works correctly in Step 4."""
 
-        with pytest.raises(FeatureNotEnabledError):
-            asyncio.run(
-                self.adapter.place_order(
-                    account="spot",
-                    symbol="BTCUSDT",
-                    side="buy",
-                    limit_price=Decimal("40000"),
-                    quote_amount=Decimal("100"),
-                )
+        # Test that place_order now works instead of raising FeatureNotEnabledError
+        order = asyncio.run(
+            self.adapter.place_order(
+                account="spot",
+                symbol="BTCUSDT",
+                side="buy",
+                limit_price=Decimal("40000"),
+                quote_amount=Decimal("100"),
             )
+        )
+
+        # Verify order structure
+        assert order["symbol"] == "BTCUSDT"
+        assert order["side"] == "buy"
+        assert order["status"] == "PENDING"
+        assert order["limit_price"] == Decimal("40000.00")  # Adjusted for tick_size
+        assert order["quote_amount"] > 0
+        assert order["filled_amount"] == Decimal("0.00000000")
+        assert order["id"] is not None
+        assert order["client_order_id"] is not None
 
         with pytest.raises(FeatureNotEnabledError):
             asyncio.run(self.adapter.get_open_orders())

@@ -1,11 +1,14 @@
 """
-API views for trading strategies (Step 3: Target Allocation).
+API views for trading strategies (Step 3: Target Allocation & Step 4: Manual Rebalance).
 """
 
 import asyncio
 import logging
+import uuid
+from decimal import Decimal
 
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -13,7 +16,7 @@ from rest_framework.response import Response
 
 from botbalance.exchanges.models import ExchangeAccount
 
-from .models import Strategy
+from .models import Order, RebalanceExecution, Strategy
 from .rebalance_service import rebalance_service
 from .serializers import (
     RebalancePlanSerializer,
@@ -23,6 +26,28 @@ from .serializers import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def prepare_exchange_data_for_json(exchange_order_dict: dict) -> dict:
+    """
+    Convert Decimal objects to strings for JSON serialization.
+
+    Django JSONField cannot serialize Decimal objects directly,
+    so we need to convert them to strings before storage.
+
+    Args:
+        exchange_order_dict: Dictionary containing exchange order data
+
+    Returns:
+        dict: Dictionary with Decimal values converted to strings
+    """
+    result = {}
+    for key, value in exchange_order_dict.items():
+        if isinstance(value, Decimal):
+            result[key] = str(value)
+        else:
+            result[key] = value
+    return result
 
 
 @api_view(["GET", "POST"])
@@ -362,6 +387,242 @@ def strategy_activate_view(request):
                 "status": "error",
                 "message": "Failed to update strategy status",
                 "error_code": "STRATEGY_UPDATE_ERROR",
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def rebalance_execute_view(request):
+    """
+    Execute rebalancing by placing orders according to strategy plan.
+
+    Step 4: Manual rebalance execution.
+    Creates orders through exchange adapter and stores them in the database.
+    """
+    try:
+        sanitized_user = str(request.user).replace("\r", "").replace("\n", "")
+        logger.info(f"Rebalance execute request from user: {sanitized_user}")
+
+        # Get user's strategy
+        strategy = Strategy.objects.filter(user=request.user).first()
+
+        if not strategy:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "No trading strategy found. Please create a strategy first.",
+                    "error_code": "NO_STRATEGY",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Check if strategy has valid allocations
+        if not strategy.is_allocation_valid():
+            return Response(
+                {
+                    "status": "error",
+                    "message": f"Strategy allocations are invalid. Total: {strategy.get_total_allocation()}%",
+                    "error_code": "INVALID_STRATEGY",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Get user's exchange account
+        exchange_account = ExchangeAccount.objects.filter(
+            user=request.user, is_active=True
+        ).first()
+
+        if not exchange_account:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "No active exchange account found. Please add an exchange account first.",
+                    "error_code": "NO_EXCHANGE_ACCOUNT",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Get rebalance plan
+        force_refresh_prices = request.data.get("force_refresh_prices", False)
+        rebalance_plan = asyncio.run(
+            rebalance_service.calculate_rebalance_plan(
+                strategy, exchange_account, force_refresh_prices
+            )
+        )
+
+        if not rebalance_plan or not rebalance_plan.actions:
+            return Response(
+                {
+                    "status": "success",
+                    "message": "Portfolio is already balanced. No orders needed.",
+                    "orders_created": 0,
+                    "total_delta": "0.00",
+                    "nav": str(
+                        rebalance_plan.portfolio_nav if rebalance_plan else "0.00"
+                    ),
+                }
+            )
+
+        # At this point rebalance_plan is guaranteed to be not None
+        assert rebalance_plan is not None
+
+        # Create rebalance execution record
+        execution = RebalanceExecution.objects.create(
+            strategy=strategy,
+            status="in_progress",
+            portfolio_nav=rebalance_plan.portfolio_nav,
+            total_delta=sum(
+                abs(action.delta_value) for action in rebalance_plan.actions
+            ),
+            orders_count=len(rebalance_plan.actions),
+        )
+
+        logger.info(
+            f"Created rebalance execution {execution.id} for strategy {strategy.id}"
+        )
+
+        # Create orders through exchange adapter
+        created_orders = []
+        exchange_adapter = exchange_account.get_adapter()
+
+        try:
+            for action in rebalance_plan.actions:
+                if abs(action.delta_value) < strategy.min_delta_quote:
+                    logger.info(
+                        f"Skipping {action.asset} delta {action.delta_value} below minimum {strategy.min_delta_quote}"
+                    )
+                    continue
+
+                # Determine order parameters
+                symbol = action.asset + "USDT"  # Assuming USDT pairs for now
+                side = "buy" if action.delta_value > 0 else "sell"
+                quote_amount = abs(action.delta_value)
+
+                # Calculate limit price with order_step_pct
+                market_price = action.market_price
+                if not market_price:
+                    logger.warning(f"No market price for {symbol}, skipping order")
+                    continue
+
+                # Apply order step for more aggressive pricing
+                step_multiplier = 1 + (strategy.order_step_pct / Decimal("100"))
+                if side == "buy":
+                    # Buy orders: bid higher than market for faster fills
+                    limit_price = market_price * step_multiplier
+                else:
+                    # Sell orders: ask lower than market for faster fills
+                    limit_price = market_price / step_multiplier
+
+                # Generate client order ID for idempotency
+                client_order_id = f"bb_rb_{execution.id}_{uuid.uuid4().hex[:8]}"
+
+                # Place order through exchange adapter
+                logger.info(
+                    f"Placing {side} order for {symbol}: {quote_amount} at {limit_price}"
+                )
+
+                exchange_order = asyncio.run(
+                    exchange_adapter.place_order(
+                        account="spot",
+                        symbol=symbol,
+                        side=side,
+                        limit_price=limit_price,
+                        quote_amount=quote_amount,
+                        client_order_id=client_order_id,
+                    )
+                )
+
+                # Create Order record in database
+                order = Order.objects.create(
+                    user=request.user,
+                    strategy=strategy,
+                    execution=execution,
+                    exchange_order_id=exchange_order["id"],
+                    client_order_id=client_order_id,
+                    exchange=exchange_account.exchange,
+                    symbol=symbol,
+                    side=side,
+                    status="submitted",  # Mark as submitted since exchange accepted it
+                    limit_price=exchange_order["limit_price"],
+                    quote_amount=exchange_order["quote_amount"],
+                    filled_amount=exchange_order["filled_amount"],
+                    submitted_at=timezone.now(),
+                    exchange_data=prepare_exchange_data_for_json(
+                        dict(exchange_order)
+                    ),  # Convert Decimal to strings for JSON storage
+                )
+
+                created_orders.append(order)
+                logger.info(
+                    f"Created Order {order.id} with exchange ID {exchange_order['id']}"
+                )
+
+            # Mark execution as completed
+            execution.orders_count = len(created_orders)
+            execution.mark_completed()
+
+            # Update strategy last rebalanced timestamp
+            strategy.last_rebalanced_at = timezone.now()
+            strategy.save(update_fields=["last_rebalanced_at"])
+
+            logger.info(
+                f"Rebalance execution {execution.id} completed with {len(created_orders)} orders"
+            )
+
+            # Prepare response
+            orders_data = []
+            for order in created_orders:
+                orders_data.append(
+                    {
+                        "id": order.id,
+                        "exchange_order_id": order.exchange_order_id,
+                        "symbol": order.symbol,
+                        "side": order.side,
+                        "status": order.status,
+                        "limit_price": str(order.limit_price),
+                        "quote_amount": str(order.quote_amount),
+                        "created_at": order.created_at.isoformat(),
+                    }
+                )
+
+            return Response(
+                {
+                    "status": "success",
+                    "message": f"Rebalance executed successfully. Created {len(created_orders)} orders.",
+                    "execution_id": execution.id,
+                    "orders_created": len(created_orders),
+                    "total_delta": str(execution.total_delta),
+                    "nav": str(rebalance_plan.portfolio_nav),
+                    "orders": orders_data,
+                }
+            )
+
+        except Exception as e:
+            # Mark execution as failed
+            execution.mark_failed(str(e))
+            logger.error(
+                f"Rebalance execution {execution.id} failed: {e}", exc_info=True
+            )
+
+            return Response(
+                {
+                    "status": "error",
+                    "message": f"Failed to execute rebalance: {str(e)}",
+                    "error_code": "EXECUTION_FAILED",
+                    "execution_id": execution.id,
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    except Exception as e:
+        logger.error(f"Error in rebalance_execute_view: {e}", exc_info=True)
+        return Response(
+            {
+                "status": "error",
+                "message": "Internal server error occurred during rebalance execution",
+                "error_code": "REBALANCE_ERROR",
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )

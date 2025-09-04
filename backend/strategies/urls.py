@@ -14,4 +14,5 @@ urlpatterns = [
     path("activate/", views.strategy_activate_view, name="strategy_activate"),
     # Rebalancing
     path("rebalance/plan/", views.rebalance_plan_view, name="rebalance_plan"),
+    path("rebalance/execute/", views.rebalance_execute_view, name="rebalance_execute"),
 ]

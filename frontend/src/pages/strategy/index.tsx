@@ -49,15 +49,12 @@ const StrategyPage = () => {
         className="min-h-screen"
         style={{ backgroundColor: 'rgb(var(--canvas-default))' }}
       >
-        <AppHeader
-          title="Trading Strategy"
-          subtitle="Configure your portfolio target allocations and view rebalancing recommendations"
-        />
+        <AppHeader />
 
         {/* Main Content */}
-        <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+        <main className="max-w-7xl mx-auto py-4 sm:py-6 lg:py-8 px-3 sm:px-4 lg:px-8">
           {/* Strategy Form and Plan */}
-          <div className="space-y-8">
+          <div className="space-y-6 sm:space-y-8">
             <Suspense fallback={<LoadingFallback />}>
               <StrategyForm />
             </Suspense>
