@@ -86,19 +86,25 @@ const ActionRow: React.FC<ActionRowProps> = ({ action }) => {
         action.market_price ? (
           <div>
             <div className="font-medium">
-              ${parseFloat(action.order_amount).toLocaleString()}
+              $
+              {parseFloat(
+                action.order_amount_normalized || action.order_amount,
+              ).toLocaleString()}
             </div>
             <div
               className="text-xs mt-1"
               style={{ color: 'rgb(var(--fg-muted))' }}
             >
-              {parseFloat(action.order_volume).toFixed(
-                action.asset === 'USDT' ? 2 : 8,
-              )}{' '}
+              {parseFloat(
+                action.normalized_order_volume || action.order_volume,
+              ).toFixed(action.asset === 'USDT' ? 2 : 8)}{' '}
               {action.asset}
             </div>
             <div className="text-xs" style={{ color: 'rgb(var(--fg-muted))' }}>
-              @ ${parseFloat(action.order_price).toFixed(2)}
+              @ $
+              {parseFloat(
+                action.normalized_order_price || action.order_price,
+              ).toFixed(2)}
             </div>
             <div
               className="text-xs"

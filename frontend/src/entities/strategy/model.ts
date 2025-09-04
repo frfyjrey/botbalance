@@ -37,6 +37,9 @@ export interface RebalanceAction {
   order_volume: string | null;
   order_price: string | null;
   market_price: string | null;
+  normalized_order_volume?: string | null;
+  normalized_order_price?: string | null;
+  order_amount_normalized?: string | null;
 }
 
 export interface RebalancePlan {
