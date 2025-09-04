@@ -36,6 +36,9 @@ class RebalanceAction(NamedTuple):
     market_price: Decimal | None  # Current market price
     normalized_order_volume: Decimal | None  # Volume after tick/lot normalization
     normalized_order_price: Decimal | None  # Price after tick normalization
+    order_amount_normalized: (
+        Decimal | None
+    )  # Quote amount after normalization (price*qty)
 
 
 class RebalancePlan(NamedTuple):
@@ -253,6 +256,7 @@ class RebalanceService:
             order_price = None
             normalized_order_volume = None
             normalized_order_price = None
+            order_amount_normalized = None
 
             if order_amount is not None and market_price > 0:
                 # Calculate volume (amount of base currency to buy/sell)
@@ -281,10 +285,17 @@ class RebalanceService:
                         )
                         normalized_order_price = self._round_decimal(n_price, 8)
                         normalized_order_volume = self._round_decimal(n_base_qty, 8)
+                        order_amount_normalized = self._round_decimal(
+                            normalized_order_price * normalized_order_volume, 2
+                        )
                     except Exception:
                         # If normalization fails, keep pre-normalized values
                         normalized_order_price = order_price
                         normalized_order_volume = order_volume
+                        if order_price is not None and order_volume is not None:
+                            order_amount_normalized = self._round_decimal(
+                                order_price * order_volume, 2
+                            )
 
             rebalance_action = RebalanceAction(
                 asset=asset,
@@ -300,6 +311,7 @@ class RebalanceService:
                 market_price=market_price,
                 normalized_order_volume=normalized_order_volume,
                 normalized_order_price=normalized_order_price,
+                order_amount_normalized=order_amount_normalized,
             )
 
             actions.append(rebalance_action)

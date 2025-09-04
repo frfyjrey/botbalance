@@ -278,6 +278,7 @@ def rebalance_plan_view(request):
                     "market_price": action.market_price,
                     "normalized_order_volume": action.normalized_order_volume,
                     "normalized_order_price": action.normalized_order_price,
+                    "order_amount_normalized": action.order_amount_normalized,
                 }
                 for action in plan.actions
             ],
