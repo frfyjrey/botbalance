@@ -103,6 +103,8 @@ def start_celery_worker():
         "2",
         "--max-tasks-per-child",
         "1000",
+        "--heartbeat-interval",
+        "30",
     ]
 
     try:
