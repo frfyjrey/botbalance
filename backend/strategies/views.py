@@ -257,7 +257,7 @@ def rebalance_plan_view(request):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-        # Convert plan to dict for serialization
+        # Convert plan to dict for serialization (include normalized params for visibility)
         plan_data = {
             "strategy_id": plan.strategy_id,
             "strategy_name": plan.strategy_name,
@@ -276,6 +276,8 @@ def rebalance_plan_view(request):
                     "order_volume": action.order_volume,
                     "order_price": action.order_price,
                     "market_price": action.market_price,
+                    "normalized_order_volume": action.normalized_order_volume,
+                    "normalized_order_price": action.normalized_order_price,
                 }
                 for action in plan.actions
             ],

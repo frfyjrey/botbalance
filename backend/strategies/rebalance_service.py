@@ -34,6 +34,8 @@ class RebalanceAction(NamedTuple):
     order_volume: Decimal | None  # Volume in base currency (BTC, ETH, etc.)
     order_price: Decimal | None  # Limit price with order step applied
     market_price: Decimal | None  # Current market price
+    normalized_order_volume: Decimal | None  # Volume after tick/lot normalization
+    normalized_order_price: Decimal | None  # Price after tick normalization
 
 
 class RebalancePlan(NamedTuple):
@@ -136,6 +138,9 @@ class RebalanceService:
                 else:
                     asset_prices[asset.symbol] = Decimal("0")
 
+            # Prepare adapter for normalization
+            adapter = exchange_account.get_adapter()
+
             # Calculate rebalancing actions
             actions = self._calculate_actions(
                 current_allocations,
@@ -146,6 +151,8 @@ class RebalanceService:
                 strategy.order_size_pct,
                 asset_prices,
                 strategy.order_step_pct,
+                adapter,
+                portfolio_summary.quote_currency,
             )
 
             # Calculate summary statistics
@@ -192,6 +199,8 @@ class RebalanceService:
         order_size_pct: Decimal,
         asset_prices: dict[str, Decimal],
         order_step_pct: Decimal,
+        adapter,
+        quote_currency: str,
     ) -> list[RebalanceAction]:
         """
         Calculate required rebalancing actions.
@@ -239,6 +248,8 @@ class RebalanceService:
             # Calculate order volume and price with order step
             order_volume = None
             order_price = None
+            normalized_order_volume = None
+            normalized_order_price = None
 
             if order_amount is not None and market_price > 0:
                 # Calculate volume (amount of base currency to buy/sell)
@@ -257,6 +268,21 @@ class RebalanceService:
                 if order_price is not None:
                     order_price = self._round_decimal(order_price, 8)
 
+                    # Normalize early using adapter (tick/lot)
+                    try:
+                        symbol = f"{asset}{quote_currency}"
+                        n_price, n_base_qty = adapter.normalize_order(
+                            symbol=symbol,
+                            limit_price=order_price,
+                            quote_amount=order_amount,
+                        )
+                        normalized_order_price = self._round_decimal(n_price, 8)
+                        normalized_order_volume = self._round_decimal(n_base_qty, 8)
+                    except Exception:
+                        # If normalization fails, keep pre-normalized values
+                        normalized_order_price = order_price
+                        normalized_order_volume = order_volume
+
             rebalance_action = RebalanceAction(
                 asset=asset,
                 action=action,
@@ -269,6 +295,8 @@ class RebalanceService:
                 order_volume=order_volume,
                 order_price=order_price,
                 market_price=market_price,
+                normalized_order_volume=normalized_order_volume,
+                normalized_order_price=normalized_order_price,
             )
 
             actions.append(rebalance_action)

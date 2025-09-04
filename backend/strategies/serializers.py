@@ -198,6 +198,12 @@ class RebalanceActionSerializer(serializers.Serializer):
     market_price = serializers.DecimalField(
         max_digits=15, decimal_places=8, allow_null=True, required=False
     )
+    normalized_order_volume = serializers.DecimalField(
+        max_digits=20, decimal_places=8, allow_null=True, required=False
+    )
+    normalized_order_price = serializers.DecimalField(
+        max_digits=15, decimal_places=8, allow_null=True, required=False
+    )
 
 
 class RebalancePlanSerializer(serializers.Serializer):
