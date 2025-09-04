@@ -89,7 +89,10 @@ const ActionRow: React.FC<ActionRowProps> = ({ action }) => {
               $
               {parseFloat(
                 action.order_amount_normalized || action.order_amount,
-              ).toLocaleString()}
+              ).toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
             </div>
             <div
               className="text-xs mt-1"
@@ -496,7 +499,10 @@ export const RebalancePlan: React.FC<RebalancePlanProps> = ({ className }) => {
                         $
                         {parseFloat(
                           executionResult.total_delta || '0',
-                        ).toLocaleString()}
+                        ).toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
                         )
                       </p>
                       <div className="space-y-2">
@@ -526,11 +532,21 @@ export const RebalancePlan: React.FC<RebalancePlanProps> = ({ className }) => {
                               </span>
                               <span style={{ color: 'rgb(var(--fg-muted))' }}>
                                 $
-                                {parseFloat(
-                                  order.quote_amount,
-                                ).toLocaleString()}{' '}
+                                {parseFloat(order.quote_amount).toLocaleString(
+                                  undefined,
+                                  {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  },
+                                )}{' '}
                                 @ $
-                                {parseFloat(order.limit_price).toLocaleString()}
+                                {parseFloat(order.limit_price).toLocaleString(
+                                  undefined,
+                                  {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  },
+                                )}
                               </span>
                             </div>
                             <span
