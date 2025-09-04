@@ -186,6 +186,11 @@ CELERY_WORKER_MAX_TASKS_PER_CHILD = 1000
 CELERY_TASK_ACKS_LATE = True
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 
+# Reduce idle BRPOP churn on Redis while keeping immediate task pickup
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    "brpop_timeout": int(os.getenv("CELERY_BROKER_BRPOP_TIMEOUT", "60")),
+}
+
 # =============================================================================
 # LOGGING FOR PRODUCTION
 # =============================================================================
