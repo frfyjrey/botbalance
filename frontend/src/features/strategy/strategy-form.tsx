@@ -39,6 +39,7 @@ export const StrategyForm: React.FC<StrategyFormProps> = ({
     order_size_pct: DEFAULT_STRATEGY_VALUES.order_size_pct,
     min_delta_quote: DEFAULT_STRATEGY_VALUES.min_delta_quote,
     order_step_pct: DEFAULT_STRATEGY_VALUES.order_step_pct,
+    switch_cancel_buffer_pct: DEFAULT_STRATEGY_VALUES.switch_cancel_buffer_pct,
     allocations: [],
   });
 
@@ -58,6 +59,7 @@ export const StrategyForm: React.FC<StrategyFormProps> = ({
         order_size_pct: parseFloat(strategy.order_size_pct),
         min_delta_quote: parseFloat(strategy.min_delta_quote),
         order_step_pct: parseFloat(strategy.order_step_pct),
+        switch_cancel_buffer_pct: parseFloat(strategy.switch_cancel_buffer_pct),
         allocations: strategy.allocations.map(alloc => ({
           asset: alloc.asset,
           target_percentage: parseFloat(alloc.target_percentage),
@@ -90,6 +92,19 @@ export const StrategyForm: React.FC<StrategyFormProps> = ({
         min: 0.01,
         max: 5,
       });
+    }
+
+    if (
+      formData.switch_cancel_buffer_pct < 0 ||
+      formData.switch_cancel_buffer_pct > 1
+    ) {
+      newErrors.switch_cancel_buffer_pct = t(
+        'common:validation.percentage_range',
+        {
+          min: 0.0,
+          max: 1.0,
+        },
+      );
     }
 
     if (formData.allocations.length === 0) {
@@ -176,6 +191,7 @@ export const StrategyForm: React.FC<StrategyFormProps> = ({
         order_size_pct: formData.order_size_pct.toString(),
         min_delta_quote: formData.min_delta_quote.toString(),
         order_step_pct: formData.order_step_pct.toString(),
+        switch_cancel_buffer_pct: formData.switch_cancel_buffer_pct.toString(),
         allocations: formData.allocations.map(alloc => ({
           asset: alloc.asset.toUpperCase(),
           target_percentage: alloc.target_percentage.toString(),
@@ -331,6 +347,37 @@ export const StrategyForm: React.FC<StrategyFormProps> = ({
           <p className="text-xs" style={{ color: 'rgb(var(--fg-muted))' }}>
             Price step for limit orders (0.40% = buy 0.4% below market, sell
             0.4% above market)
+          </p>
+        </div>
+
+        {/* Switch Cancel Buffer Percentage */}
+        <div className="space-y-2">
+          <Label htmlFor="switch-cancel-buffer">
+            Cancel buffer (% of price)
+          </Label>
+          <Input
+            id="switch-cancel-buffer"
+            type="number"
+            min="0.00"
+            max="1.00"
+            step="0.05"
+            value={formData.switch_cancel_buffer_pct}
+            onChange={e =>
+              handleFieldChange(
+                'switch_cancel_buffer_pct',
+                parseFloat(e.target.value) || 0,
+              )
+            }
+            placeholder="0.15"
+            disabled={isLoading}
+          />
+          {errors.switch_cancel_buffer_pct && (
+            <p className="text-sm text-red-600">
+              {errors.switch_cancel_buffer_pct}
+            </p>
+          )}
+          <p className="text-xs" style={{ color: 'rgb(var(--fg-muted))' }}>
+            Cancel on side change only if market moved by X% from order price
           </p>
         </div>
 

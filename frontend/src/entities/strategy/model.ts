@@ -16,6 +16,7 @@ export interface Strategy {
   order_size_pct: string;
   min_delta_quote: string;
   order_step_pct: string;
+  switch_cancel_buffer_pct: string;
   is_active: boolean;
   allocations: StrategyAllocation[];
   total_allocation: string;
@@ -103,6 +104,7 @@ export interface StrategyCreateRequest {
   order_size_pct?: string;
   min_delta_quote?: string;
   order_step_pct?: string;
+  switch_cancel_buffer_pct?: string;
   allocations: Omit<StrategyAllocation, 'id' | 'created_at' | 'updated_at'>[];
 }
 
@@ -111,6 +113,7 @@ export interface StrategyUpdateRequest {
   order_size_pct?: string;
   min_delta_quote?: string;
   order_step_pct?: string;
+  switch_cancel_buffer_pct?: string;
   is_active?: boolean;
   allocations?: Omit<StrategyAllocation, 'id' | 'created_at' | 'updated_at'>[];
 }
@@ -125,6 +128,7 @@ export interface StrategyFormData {
   order_size_pct: number;
   min_delta_quote: number;
   order_step_pct: number;
+  switch_cancel_buffer_pct: number;
   allocations: {
     asset: string;
     target_percentage: number;
@@ -163,6 +167,7 @@ export const DEFAULT_STRATEGY_VALUES = {
   order_size_pct: 10.0,
   min_delta_quote: 10.0,
   order_step_pct: 0.4,
+  switch_cancel_buffer_pct: 0.15,
 } as const;
 
 export const SUPPORTED_ASSETS = [

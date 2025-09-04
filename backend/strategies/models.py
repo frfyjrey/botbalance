@@ -66,6 +66,18 @@ class Strategy(models.Model):
         help_text="Order step percentage for limit orders (0.4% = more aggressive pricing)",
     )
 
+    # Switch-side cancel buffer in percent of order price (absolute %)
+    switch_cancel_buffer_pct = models.DecimalField(
+        max_digits=4,
+        decimal_places=2,
+        default=Decimal("0.15"),
+        validators=[
+            MinValueValidator(Decimal("0.00")),
+            MaxValueValidator(Decimal("1.00")),
+        ],
+        help_text="Absolute cancel buffer as percentage of price (0.15% default)",
+    )
+
     # Status
     is_active = models.BooleanField(
         default=False,
@@ -110,6 +122,14 @@ class Strategy(models.Model):
         if self.order_step_pct <= 0 or self.order_step_pct > 5:
             raise ValidationError(
                 {"order_step_pct": "Order step must be between 0.01% and 5.00%"}
+            )
+
+        # Validate switch_cancel_buffer_pct (0.00% .. 1.00%)
+        if self.switch_cancel_buffer_pct < 0 or self.switch_cancel_buffer_pct > 1:
+            raise ValidationError(
+                {
+                    "switch_cancel_buffer_pct": "Cancel buffer must be between 0.00% and 1.00%",
+                }
             )
 
     def save(self, *args, **kwargs):
