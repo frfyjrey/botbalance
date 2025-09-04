@@ -630,7 +630,7 @@ def rebalance_execute_view(request):
             return Response(
                 {
                     "status": "error",
-                    "message": f"Failed to execute rebalance: {str(e)}",
+                    "message": "Internal server error occurred during rebalance execution.",
                     "error_code": "EXECUTION_FAILED",
                     "execution_id": execution.id,
                 },

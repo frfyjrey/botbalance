@@ -63,7 +63,6 @@ class TestStrategyRebalance(APITestCase):
 
     def test_rebalance_plan_pricing_direction_and_normalization(self):
         """Plan: buy price below market, sell above; normalized fields present."""
-        url = reverse("strategies:rebalance_plan")
         url = reverse("api:strategy:rebalance_plan")  # namespaced under api
         resp = self.client.get(url)
         assert resp.status_code == status.HTTP_200_OK

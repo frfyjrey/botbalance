@@ -489,8 +489,8 @@ class BinanceAdapter(ExchangeAdapter):
             if not hasattr(self, "_order_map"):
                 self._order_map = {}
             self._order_map[str(order["id"])] = order["symbol"]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Failed to remember order mapping: {e}")
 
     def _order_symbol_by_id(self, order_id: str) -> str | None:
         try:

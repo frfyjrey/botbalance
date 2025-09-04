@@ -1052,11 +1052,11 @@ def user_orders_view(request):
             }
         )
 
-    except ValueError as e:
+    except ValueError:
         return Response(
             {
                 "status": "error",
-                "message": f"Invalid query parameter: {str(e)}",
+                "message": "Invalid query parameter",
                 "error_code": "INVALID_PARAMETER",
             },
             status=status.HTTP_400_BAD_REQUEST,
