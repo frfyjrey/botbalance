@@ -6,6 +6,8 @@ alwaysApply: true
 
 ## -1! Перед каждым коммитом прогнать команду make pre-commit
 
+- mobile first!
+
 
 ## 0 · Immutable files — ask before touching
 

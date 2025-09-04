@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@shared/ui/Button';
-import { useUserProfile, getUserDisplayName } from '@entities/user';
+import { useUserProfile } from '@entities/user';
 import { AppHeader } from '@widgets/layout';
 import { BalancesCard } from '@features/balance';
 import {
@@ -14,7 +14,7 @@ import {
 export const DashboardContent = () => {
   const { t } = useTranslation('dashboard');
   const navigate = useNavigate();
-  const { data: user, isLoading: userLoading } = useUserProfile();
+  const { isLoading: userLoading } = useUserProfile();
 
   if (userLoading) {
     return (
@@ -32,24 +32,19 @@ export const DashboardContent = () => {
       className="min-h-screen"
       style={{ backgroundColor: 'rgb(var(--canvas-default))' }}
     >
-      <AppHeader
-        title={t('welcome', {
-          username: user ? getUserDisplayName(user) : 'User',
-        })}
-        subtitle={t('subtitle')}
-      />
+      <AppHeader />
 
       {/* Main Content - Simple user dashboard */}
-      <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-        <div className="space-y-6">
+      <main className="max-w-7xl mx-auto py-4 sm:py-6 lg:py-8 px-3 sm:px-4 lg:px-8">
+        <div className="space-y-4 sm:space-y-6">
           {/* Portfolio Overview - Step 2 Complete */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
             <PortfolioSummaryCard />
             <BalancesCard />
           </div>
 
           {/* Portfolio Details */}
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6">
             <AssetAllocationChart />
             <AssetsList maxItems={8} />
           </div>

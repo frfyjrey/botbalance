@@ -16,6 +16,7 @@ export interface Strategy {
   order_size_pct: string;
   min_delta_quote: string;
   order_step_pct: string;
+  switch_cancel_buffer_pct: string;
   is_active: boolean;
   allocations: StrategyAllocation[];
   total_allocation: string;
@@ -37,6 +38,9 @@ export interface RebalanceAction {
   order_volume: string | null;
   order_price: string | null;
   market_price: string | null;
+  normalized_order_volume?: string | null;
+  normalized_order_price?: string | null;
+  order_amount_normalized?: string | null;
 }
 
 export interface RebalancePlan {
@@ -68,12 +72,39 @@ export interface RebalancePlanResponse {
   error_code?: string;
 }
 
+export interface RebalanceExecuteRequest {
+  force_refresh_prices?: boolean;
+}
+
+export interface RebalanceOrder {
+  id: number;
+  exchange_order_id: string;
+  symbol: string;
+  side: 'buy' | 'sell';
+  status: string;
+  limit_price: string;
+  quote_amount: string;
+  created_at: string;
+}
+
+export interface RebalanceExecuteResponse {
+  status: 'success' | 'error';
+  message: string;
+  execution_id?: number;
+  orders_created?: number;
+  total_delta?: string;
+  nav?: string;
+  orders?: RebalanceOrder[];
+  error_code?: string;
+}
+
 // Request types for API
 export interface StrategyCreateRequest {
   name?: string;
   order_size_pct?: string;
   min_delta_quote?: string;
   order_step_pct?: string;
+  switch_cancel_buffer_pct?: string;
   allocations: Omit<StrategyAllocation, 'id' | 'created_at' | 'updated_at'>[];
 }
 
@@ -82,6 +113,7 @@ export interface StrategyUpdateRequest {
   order_size_pct?: string;
   min_delta_quote?: string;
   order_step_pct?: string;
+  switch_cancel_buffer_pct?: string;
   is_active?: boolean;
   allocations?: Omit<StrategyAllocation, 'id' | 'created_at' | 'updated_at'>[];
 }
@@ -96,6 +128,7 @@ export interface StrategyFormData {
   order_size_pct: number;
   min_delta_quote: number;
   order_step_pct: number;
+  switch_cancel_buffer_pct: number;
   allocations: {
     asset: string;
     target_percentage: number;
@@ -134,6 +167,7 @@ export const DEFAULT_STRATEGY_VALUES = {
   order_size_pct: 10.0,
   min_delta_quote: 10.0,
   order_step_pct: 0.4,
+  switch_cancel_buffer_pct: 0.15,
 } as const;
 
 export const SUPPORTED_ASSETS = [

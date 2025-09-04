@@ -120,3 +120,50 @@ class TestErrorHandling:
         response = api_client.post(url)
 
         assert response.status_code == status.HTTP_405_METHOD_NOT_ALLOWED
+
+
+@pytest.mark.integration
+class TestBinanceSpotTestnetSmoke:
+    """Smoke-test for Binance Spot testnet if keys are provided via env and enabled."""
+
+    @pytest.mark.skipif(
+        __import__("os").getenv("USE_LIVE_EXCHANGE", "false").lower() != "true"
+        or __import__("os").getenv("EXCHANGE_ENV", "mock").lower() != "testnet"
+        or __import__("os").getenv("ENABLE_SYSTEM_TESTNET_ACCOUNT", "false").lower()
+        != "true"
+        or not __import__("os").getenv("BINANCE_SPOT_TESTNET_API_KEY")
+        or not __import__("os").getenv("BINANCE_SPOT_TESTNET_API_SECRET"),
+        reason="Live exchange tests disabled or testnet not configured",
+    )
+    @pytest.mark.django_db
+    def test_place_open_cancel_smoke(self):
+        import asyncio
+        import os
+        from decimal import Decimal
+
+        from botbalance.exchanges.binance_adapter import BinanceAdapter
+
+        adapter = BinanceAdapter(
+            api_key=os.environ["BINANCE_SPOT_TESTNET_API_KEY"],
+            api_secret=os.environ["BINANCE_SPOT_TESTNET_API_SECRET"],
+            testnet=True,
+        )
+
+        async def run_flow():
+            symbol = "BTCUSDT"
+            await adapter.ping()
+            order = await adapter.place_order(
+                account="spot",
+                symbol=symbol,
+                side="buy",
+                limit_price=Decimal("30000"),
+                quote_amount=Decimal("10"),
+                client_order_id="smoke_coid_demo",
+            )
+            assert order["id"]
+            open_orders = await adapter.get_open_orders(symbol=symbol)
+            assert isinstance(open_orders, list)
+            ok = await adapter.cancel_order(order["id"])
+            assert ok is True
+
+        asyncio.run(run_flow())

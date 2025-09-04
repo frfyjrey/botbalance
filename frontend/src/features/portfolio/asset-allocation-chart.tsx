@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatCurrencyUSD, formatNumberEnUS } from '@shared/lib/utils';
 import { useTranslation } from 'react-i18next';
 
 // Using GitHub-style card design like BalancesCard
@@ -284,15 +285,14 @@ export const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
                       style={{ color: 'rgb(var(--fg-muted))' }}
                     >
                       <span className="truncate">
-                        {parseFloat(asset.balance).toLocaleString()}{' '}
+                        {formatNumberEnUS(parseFloat(asset.balance), {
+                          maximumFractionDigits:
+                            asset.symbol === 'USDT' ? 2 : 8,
+                        })}{' '}
                         {asset.symbol}
                       </span>
                       <span className="ml-2">
-                        $
-                        {parseFloat(asset.value_usd).toLocaleString('en-US', {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
+                        ${formatCurrencyUSD(parseFloat(asset.value_usd))}
                       </span>
                     </div>
                   </div>

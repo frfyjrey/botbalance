@@ -126,7 +126,7 @@ jobs:
             --set-cloudsql-instances=${{ env.PROJECT_ID }}:${{ env.REGION }}:botbalance-pg \
             --set-secrets=DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,REDIS_URL=REDIS_URL:latest,ENCRYPTION_KEY=ENCRYPTION_KEY:latest,DB_HOST=DB_HOST:latest,DB_USER=DB_USER:latest,DB_PASSWORD=DB_PASSWORD:latest,DB_NAME=DB_NAME:latest,CORS_ALLOWED_ORIGINS=CORS_ALLOWED_ORIGINS:latest \
             --set-env-vars=DJANGO_SETTINGS_MODULE=botbalance.settings.prod \
-            --memory=512Mi --cpu=1 --concurrency=40 --min-instances=1 \
+            --memory=512Mi --cpu=1 --concurrency=40 --min-instances=1 --max-instances=2 \
             --tag=$(echo ${{ steps.version.outputs.VERSION }} | sed 's/\./-/g')
 
       - name: 🔄 Deploy Celery Worker
@@ -139,10 +139,41 @@ jobs:
             --set-cloudsql-instances=${{ env.PROJECT_ID }}:${{ env.REGION }}:botbalance-pg \
             --set-secrets=DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,REDIS_URL=REDIS_URL:latest,ENCRYPTION_KEY=ENCRYPTION_KEY:latest,DB_HOST=DB_HOST:latest,DB_USER=DB_USER:latest,DB_PASSWORD=DB_PASSWORD:latest,DB_NAME=DB_NAME:latest \
             --set-env-vars=DJANGO_SETTINGS_MODULE=botbalance.settings.prod \
-            --memory=512Mi --cpu=1 --concurrency=1 --min-instances=1 --max-instances=3 \
+            --memory=512Mi --cpu=1 --concurrency=1 --min-instances=0 --max-instances=1 \
             --no-cpu-throttling \
             --command=python --args="worker_entrypoint.py" \
             --tag=$(echo ${{ steps.version.outputs.VERSION }} | sed 's/\./-/g')
+
+      - name: 🔀 Route traffic to latest revisions
+        run: |
+          gcloud run services update-traffic ${{ env.SERVICE_API }} \
+            --to-latest --region=${{ env.REGION }}
+          gcloud run services update-traffic ${{ env.SERVICE_WORKER }} \
+            --to-latest --region=${{ env.REGION }}
+
+      - name: 🧹 Cleanup old API revisions (keep only latest)
+        run: |
+          LATEST=$(gcloud run services describe ${{ env.SERVICE_API }} \
+            --region=${{ env.REGION }} \
+            --format='value(status.latestReadyRevisionName)')
+          gcloud run revisions list \
+            --service=${{ env.SERVICE_API }} \
+            --region=${{ env.REGION }} \
+            --format='value(metadata.name)' | grep -v "$LATEST" | \
+            xargs -r -n1 gcloud run revisions delete \
+              --region=${{ env.REGION }} --quiet
+
+      - name: 🧹 Cleanup old worker revisions (keep only latest)
+        run: |
+          LATEST=$(gcloud run services describe ${{ env.SERVICE_WORKER }} \
+            --region=${{ env.REGION }} \
+            --format='value(status.latestReadyRevisionName)')
+          gcloud run revisions list \
+            --service=${{ env.SERVICE_WORKER }} \
+            --region=${{ env.REGION }} \
+            --format='value(metadata.name)' | grep -v "$LATEST" | \
+            xargs -r -n1 gcloud run revisions delete \
+              --region=${{ env.REGION }} --quiet
 
       - name: ✅ Health check
         run: |

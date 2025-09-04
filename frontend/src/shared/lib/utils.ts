@@ -59,3 +59,18 @@ export function throttle<T extends (...args: unknown[]) => unknown>(
     }
   };
 }
+
+// Number/currency formatting (force en-US dot separator)
+export function formatNumberEnUS(
+  value: number,
+  options?: Intl.NumberFormatOptions,
+): string {
+  return Number(value).toLocaleString('en-US', options);
+}
+
+export function formatCurrencyUSD(value: number, fractionDigits = 2): string {
+  return formatNumberEnUS(value, {
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  });
+}

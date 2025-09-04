@@ -16,6 +16,7 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from botbalance.tasks.tasks import echo_task, heartbeat_task, long_running_task
+from strategies.models import Order
 
 from .serializers import (
     CreateSnapshotRequestSerializer,
@@ -384,29 +385,38 @@ def user_balances_view(request):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # Get adapter and fetch balances
+        # Get balances via adapter
         adapter = exchange_account.get_adapter()
         raw_balances = asyncio.run(adapter.get_balances(exchange_account.account_type))
 
-        # Convert to list format for serializer
+        # Reuse portfolio_service for consistent NAV and pricing
+        from botbalance.exchanges.portfolio_service import portfolio_service
+
+        portfolio_summary = asyncio.run(
+            portfolio_service.calculate_portfolio_summary(exchange_account)
+        )
+
+        if portfolio_summary is None:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Failed to calculate portfolio summary. Please try again later.",
+                    "error_code": "PORTFOLIO_CALCULATION_FAILED",
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        # Map assets to values for response
+        value_map: dict[str, Decimal] = {
+            asset.symbol: asset.value_usd for asset in portfolio_summary.assets
+        }
+
         balances_data = []
-        total_usd_value = Decimal("0.00")
+        total_usd_value = portfolio_summary.total_nav
 
         for asset, balance in raw_balances.items():
-            if balance > 0:  # Only include non-zero balances
-                # For MVP: mock USD values (will implement real price calculation in Step 2)
-                mock_usd_prices = {
-                    "BTC": Decimal("43250.50"),
-                    "ETH": Decimal("2580.75"),
-                    "BNB": Decimal("310.25"),
-                    "USDT": Decimal("1.00"),
-                    "USDC": Decimal("1.00"),
-                }
-
-                usd_price = mock_usd_prices.get(asset, Decimal("1.00"))
-                usd_value = balance * usd_price
-                total_usd_value += usd_value
-
+            if balance > 0:
+                usd_value = value_map.get(asset, Decimal("0.00"))
                 balances_data.append(
                     {
                         "asset": asset,
@@ -945,6 +955,123 @@ def delete_all_portfolio_snapshots_view(request):
                 "status": "error",
                 "message": "Failed to delete portfolio snapshots",
                 "error_code": "DELETE_SNAPSHOTS_ERROR",
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def user_orders_view(request):
+    """
+    Get user's orders with filtering and pagination.
+
+    Query parameters:
+    - limit: Number of orders to return (default: 50, max: 200)
+    - offset: Offset for pagination (default: 0)
+    - status: Filter by order status (pending, submitted, open, filled, cancelled, rejected, failed)
+    - symbol: Filter by trading symbol (e.g., 'BTCUSDT')
+    - side: Filter by order side (buy, sell)
+
+    Returns:
+    - orders: List of user orders
+    - total: Total number of orders (without limit/offset)
+    - has_more: Whether there are more orders available
+    """
+    try:
+        # Parse query parameters
+        limit = min(
+            int(request.GET.get("limit", 50)), 200
+        )  # Max 200 orders per request
+        offset = max(int(request.GET.get("offset", 0)), 0)
+        status_filter = request.GET.get("status")
+        symbol_filter = request.GET.get("symbol")
+        side_filter = request.GET.get("side")
+
+        # Build query
+        orders_qs = Order.objects.filter(user=request.user)
+
+        if status_filter:
+            orders_qs = orders_qs.filter(status=status_filter)
+        if symbol_filter:
+            orders_qs = orders_qs.filter(symbol__iexact=symbol_filter)
+        if side_filter:
+            orders_qs = orders_qs.filter(side=side_filter)
+
+        # Get total count
+        total_count = orders_qs.count()
+
+        # Apply pagination
+        orders = orders_qs.select_related("strategy", "execution")[
+            offset : offset + limit
+        ]
+
+        # Prepare response data
+        orders_data = []
+        for order in orders:
+            orders_data.append(
+                {
+                    "id": order.id,
+                    "exchange_order_id": order.exchange_order_id,
+                    "client_order_id": order.client_order_id,
+                    "exchange": order.exchange,
+                    "symbol": order.symbol,
+                    "side": order.side,
+                    "status": order.status,
+                    "limit_price": str(order.limit_price),
+                    "quote_amount": str(order.quote_amount),
+                    "filled_amount": str(order.filled_amount),
+                    "fill_percentage": str(order.fill_percentage),
+                    "fee_amount": str(order.fee_amount),
+                    "fee_asset": order.fee_asset,
+                    "created_at": order.created_at.isoformat(),
+                    "submitted_at": order.submitted_at.isoformat()
+                    if order.submitted_at
+                    else None,
+                    "filled_at": order.filled_at.isoformat()
+                    if order.filled_at
+                    else None,
+                    "updated_at": order.updated_at.isoformat(),
+                    "error_message": order.error_message,
+                    "strategy_name": order.strategy.name if order.strategy else None,
+                    "execution_id": order.execution.id if order.execution else None,
+                    "is_active": order.is_active,
+                }
+            )
+
+        has_more = offset + limit < total_count
+
+        return Response(
+            {
+                "status": "success",
+                "orders": orders_data,
+                "total": total_count,
+                "limit": limit,
+                "offset": offset,
+                "has_more": has_more,
+            }
+        )
+
+    except ValueError:
+        return Response(
+            {
+                "status": "error",
+                "message": "Invalid query parameter",
+                "error_code": "INVALID_PARAMETER",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except Exception as e:
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error in user_orders_view: {e}", exc_info=True)
+
+        return Response(
+            {
+                "status": "error",
+                "message": "Failed to fetch orders",
+                "error_code": "ORDERS_FETCH_ERROR",
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )

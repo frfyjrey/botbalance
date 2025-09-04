@@ -13,6 +13,8 @@ import type {
   StrategyUpdateRequest,
   StrategyActivateRequest,
   RebalancePlanResponse,
+  RebalanceExecuteRequest,
+  RebalanceExecuteResponse,
 } from './model';
 
 /**
@@ -189,4 +191,32 @@ export const useHasStrategy = (): boolean => {
 export const useIsStrategyActive = (): boolean => {
   const { data } = useStrategy();
   return !!data?.strategy?.is_active;
+};
+
+/**
+ * Hook to execute rebalance (create orders)
+ */
+export const useExecuteRebalance = (
+  options?: UseMutationOptions<
+    RebalanceExecuteResponse,
+    Error,
+    RebalanceExecuteRequest
+  >,
+) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: RebalanceExecuteRequest) =>
+      apiClient.executeRebalance(data),
+    onSuccess: () => {
+      // Invalidate and refetch related data after successful rebalance
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.REBALANCE_PLAN] });
+      queryClient.invalidateQueries({
+        queryKey: [QUERY_KEYS.PORTFOLIO_SUMMARY],
+      });
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.ORDERS] });
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.STRATEGY] });
+    },
+    ...options,
+  });
 };

@@ -48,6 +48,7 @@ me_patterns = [
         name="latest_portfolio_snapshot",
     ),
     path("strategy/", include("strategies.urls", namespace="strategy")),
+    path("orders/", views.user_orders_view, name="orders"),
 ]
 
 urlpatterns = [

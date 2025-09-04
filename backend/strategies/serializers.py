@@ -66,6 +66,7 @@ class StrategySerializer(serializers.ModelSerializer):
             "order_size_pct",
             "min_delta_quote",
             "order_step_pct",
+            "switch_cancel_buffer_pct",
             "is_active",
             "allocations",
             "total_allocation",
@@ -108,6 +109,12 @@ class StrategySerializer(serializers.ModelSerializer):
         """Validate order step percentage."""
         if value <= 0 or value > 5:
             raise ValidationError("Order step must be between 0.01% and 5.00%")
+        return value
+
+    def validate_switch_cancel_buffer_pct(self, value: Decimal) -> Decimal:
+        """Validate switch cancel buffer (0.00%..1.00%)."""
+        if value < 0 or value > 1:
+            raise ValidationError("Cancel buffer must be between 0.00% and 1.00%")
         return value
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
@@ -198,6 +205,15 @@ class RebalanceActionSerializer(serializers.Serializer):
     market_price = serializers.DecimalField(
         max_digits=15, decimal_places=8, allow_null=True, required=False
     )
+    normalized_order_volume = serializers.DecimalField(
+        max_digits=20, decimal_places=8, allow_null=True, required=False
+    )
+    normalized_order_price = serializers.DecimalField(
+        max_digits=15, decimal_places=8, allow_null=True, required=False
+    )
+    order_amount_normalized = serializers.DecimalField(
+        max_digits=15, decimal_places=2, allow_null=True, required=False
+    )
 
 
 class RebalancePlanSerializer(serializers.Serializer):
@@ -272,6 +288,13 @@ class StrategyCreateRequestSerializer(serializers.Serializer):
         min_value=Decimal("0.01"),
         max_value=Decimal("5.00"),
     )
+    switch_cancel_buffer_pct = serializers.DecimalField(
+        max_digits=4,
+        decimal_places=2,
+        default=Decimal("0.15"),
+        min_value=Decimal("0.00"),
+        max_value=Decimal("1.00"),
+    )
     allocations = StrategyAllocationSerializer(many=True, required=True)
 
     def validate_allocations(self, value: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -315,6 +338,13 @@ class StrategyUpdateRequestSerializer(serializers.Serializer):
         decimal_places=2,
         min_value=Decimal("0.01"),
         max_value=Decimal("5.00"),
+        required=False,
+    )
+    switch_cancel_buffer_pct = serializers.DecimalField(
+        max_digits=4,
+        decimal_places=2,
+        min_value=Decimal("0.00"),
+        max_value=Decimal("1.00"),
         required=False,
     )
     is_active = serializers.BooleanField(required=False)

@@ -52,6 +52,7 @@ export const QUERY_KEYS = {
   PORTFOLIO_SUMMARY: 'portfolio-summary',
   STRATEGY: 'strategy',
   REBALANCE_PLAN: 'rebalance-plan',
+  ORDERS: 'orders',
 } as const;
 
 // Theme

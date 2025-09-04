@@ -3,9 +3,10 @@ Django admin configuration for exchanges app.
 """
 
 from django.contrib import admin
+from django.urls import reverse
 from django.utils.html import format_html
 
-from .models import ExchangeAccount
+from .models import ExchangeAccount, PortfolioSnapshot
 
 
 @admin.register(ExchangeAccount)
@@ -52,6 +53,7 @@ class ExchangeAccountAdmin(admin.ModelAdmin):
         ),
     ]
 
+    @admin.display(description="Environment")
     def testnet_badge(self, obj):
         """Show testnet status as colored badge."""
         if obj.testnet:
@@ -62,8 +64,7 @@ class ExchangeAccountAdmin(admin.ModelAdmin):
             '<span style="color: green; font-weight: bold;">MAINNET</span>'
         )
 
-    testnet_badge.short_description = "Environment"  # type: ignore
-
+    @admin.display(description="Last Test")
     def last_tested_status(self, obj):
         """Show last connection test status."""
         if obj.last_tested_at:
@@ -73,10 +74,9 @@ class ExchangeAccountAdmin(admin.ModelAdmin):
             )
         return format_html('<span style="color: gray;">Not tested</span>')
 
-    last_tested_status.short_description = "Last Test"  # type: ignore
-
     actions = ["test_connections"]
 
+    @admin.action(description="Test API connections")
     def test_connections(self, request, queryset):
         """Admin action to test API connections."""
         success_count = 0
@@ -89,4 +89,78 @@ class ExchangeAccountAdmin(admin.ModelAdmin):
             f"Tested {queryset.count()} accounts. {success_count} successful connections.",
         )
 
-    test_connections.short_description = "Test API connections"  # type: ignore
+
+@admin.register(PortfolioSnapshot)
+class PortfolioSnapshotAdmin(admin.ModelAdmin):
+    """Admin interface for PortfolioSnapshot model."""
+
+    list_display = [
+        "id",
+        "user",
+        "exchange_account_link",
+        "source_badge",
+        "quote_asset",
+        "nav_quote",
+        "assets_count",
+        "ts",
+    ]
+
+    list_filter = ["source", "quote_asset", "ts"]
+    search_fields = ["user__username", "user__email", "id"]
+    readonly_fields = ["ts", "positions", "prices"]
+
+    fieldsets = [
+        (
+            "Snapshot Info",
+            {"fields": ["user", "exchange_account", "source", "strategy_version"]},
+        ),
+        (
+            "Portfolio Data",
+            {"fields": ["quote_asset", "nav_quote"]},
+        ),
+        (
+            "Timing",
+            {"fields": ["ts"]},
+        ),
+        (
+            "Raw Data",
+            {
+                "fields": ["positions", "prices"],
+                "classes": ["collapse"],
+                "description": "JSON data with asset positions and market prices at snapshot time",
+            },
+        ),
+    ]
+
+    @admin.display(description="Exchange Account")
+    def exchange_account_link(self, obj):
+        """Link to exchange account or show None."""
+        if obj.exchange_account:
+            url = reverse(
+                "admin:exchanges_exchangeaccount_change", args=[obj.exchange_account.pk]
+            )
+            return format_html('<a href="{}">{}</a>', url, obj.exchange_account.name)
+        return format_html('<span style="color: gray;">No account</span>')
+
+    @admin.display(description="Source")
+    def source_badge(self, obj):
+        """Show source as colored badge."""
+        colors = {
+            "summary": "blue",
+            "order_fill": "green",
+            "cron": "orange",
+            "init": "purple",
+        }
+        color = colors.get(obj.source, "gray")
+        return format_html(
+            '<span style="color: {}; font-weight: bold;">{}</span>',
+            color,
+            obj.source.upper(),
+        )
+
+    @admin.display(description="Assets")
+    def assets_count(self, obj):
+        """Show number of assets in portfolio."""
+        positions = obj.positions or {}
+        count = len(positions)
+        return f"{count} assets"
