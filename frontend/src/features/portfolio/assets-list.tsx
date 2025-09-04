@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatCurrencyUSD, formatNumberEnUS } from '@shared/lib/utils';
 import { useTranslation } from 'react-i18next';
 
 // Using GitHub-style card design like BalancesCard
@@ -17,19 +18,15 @@ interface AssetRowProps {
 const AssetRow: React.FC<AssetRowProps> = ({ asset, rank }) => {
   const formatBalance = (balance: string, symbol: string) => {
     const num = parseFloat(balance);
-    if (num === 0) return '0';
-    if (num < 0.001) return `<0.001 ${symbol}`;
-    return `${num.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${symbol}`;
+    if (num === 0) return `0 ${symbol}`;
+    if (num < 0.001 && symbol !== 'USDT') return `<0.001 ${symbol}`;
+    const fraction = symbol === 'USDT' ? 2 : 8;
+    return `${formatNumberEnUS(num, { maximumFractionDigits: fraction })} ${symbol}`;
   };
 
   const formatValue = (value: string) => {
     const num = parseFloat(value);
-    return num.toLocaleString('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
+    return `$${formatCurrencyUSD(num)}`;
   };
 
   const formatPrice = (price: string | null) => {
