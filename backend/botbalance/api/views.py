@@ -385,29 +385,38 @@ def user_balances_view(request):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # Get adapter and fetch balances
+        # Get balances via adapter
         adapter = exchange_account.get_adapter()
         raw_balances = asyncio.run(adapter.get_balances(exchange_account.account_type))
 
-        # Convert to list format for serializer
+        # Reuse portfolio_service for consistent NAV and pricing
+        from botbalance.exchanges.portfolio_service import portfolio_service
+
+        portfolio_summary = asyncio.run(
+            portfolio_service.calculate_portfolio_summary(exchange_account)
+        )
+
+        if portfolio_summary is None:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Failed to calculate portfolio summary. Please try again later.",
+                    "error_code": "PORTFOLIO_CALCULATION_FAILED",
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        # Map assets to values for response
+        value_map: dict[str, Decimal] = {
+            asset.symbol: asset.value_usd for asset in portfolio_summary.assets
+        }
+
         balances_data = []
-        total_usd_value = Decimal("0.00")
+        total_usd_value = portfolio_summary.total_nav
 
         for asset, balance in raw_balances.items():
-            if balance > 0:  # Only include non-zero balances
-                # For MVP: mock USD values (will implement real price calculation in Step 2)
-                mock_usd_prices = {
-                    "BTC": Decimal("43250.50"),
-                    "ETH": Decimal("2580.75"),
-                    "BNB": Decimal("310.25"),
-                    "USDT": Decimal("1.00"),
-                    "USDC": Decimal("1.00"),
-                }
-
-                usd_price = mock_usd_prices.get(asset, Decimal("1.00"))
-                usd_value = balance * usd_price
-                total_usd_value += usd_value
-
+            if balance > 0:
+                usd_value = value_map.get(asset, Decimal("0.00"))
                 balances_data.append(
                     {
                         "asset": asset,

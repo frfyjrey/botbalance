@@ -4,11 +4,9 @@ API views for trading strategies (Step 3: Target Allocation & Step 4: Manual Reb
 
 import asyncio
 import logging
-import uuid
 from decimal import Decimal
 
 from django.shortcuts import get_object_or_404
-from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -488,7 +486,15 @@ def rebalance_execute_view(request):
         exchange_adapter = exchange_account.get_adapter()
 
         try:
-            for action in rebalance_plan.actions:
+            import hashlib
+            from math import floor
+
+            from django.utils import timezone
+
+            # Use 30-second tick for idempotent client ids
+            ts_tick = int(floor(timezone.now().timestamp() / 30)) * 30
+
+            for index, action in enumerate(rebalance_plan.actions):
                 if abs(action.delta_value) < strategy.min_delta_quote:
                     logger.info(
                         f"Skipping {action.asset} delta {action.delta_value} below minimum {strategy.min_delta_quote}"
@@ -500,23 +506,24 @@ def rebalance_execute_view(request):
                 side = "buy" if action.delta_value > 0 else "sell"
                 quote_amount = abs(action.delta_value)
 
-                # Calculate limit price with order_step_pct
-                market_price = action.market_price
-                if not market_price:
-                    logger.warning(f"No market price for {symbol}, skipping order")
-                    continue
-
-                # Apply order step for more aggressive pricing
-                step_multiplier = 1 + (strategy.order_step_pct / Decimal("100"))
-                if side == "buy":
-                    # Buy orders: bid higher than market for faster fills
-                    limit_price = market_price * step_multiplier
-                else:
-                    # Sell orders: ask lower than market for faster fills
-                    limit_price = market_price / step_multiplier
+                # Use precomputed order_price from plan (Engine logic: buy below, sell above)
+                limit_price = action.order_price
+                if not limit_price:
+                    # Fallback: compute from market price and step pct (buy below, sell above)
+                    market_price = action.market_price
+                    if not market_price:
+                        logger.warning(f"No market price for {symbol}, skipping order")
+                        continue
+                    step = strategy.order_step_pct / Decimal("100")
+                    limit_price = (
+                        market_price * (Decimal("1") - step)
+                        if side == "buy"
+                        else market_price * (Decimal("1") + step)
+                    )
 
                 # Generate client order ID for idempotency
-                client_order_id = f"bb_rb_{execution.id}_{uuid.uuid4().hex[:8]}"
+                coid_seed = f"{request.user.id}:{symbol}:{side}:{ts_tick}:{index}"
+                client_order_id = hashlib.sha1(coid_seed.encode()).hexdigest()[:20]
 
                 # Place order through exchange adapter
                 logger.info(
