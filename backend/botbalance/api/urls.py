@@ -47,6 +47,13 @@ me_patterns = [
         views.latest_portfolio_snapshot_view,
         name="latest_portfolio_snapshot",
     ),
+    # Portfolio State endpoints (Etap 4)
+    path("portfolio/state/", views.portfolio_state_view, name="portfolio_state"),
+    path(
+        "portfolio/state/refresh/",
+        views.refresh_portfolio_state_view,
+        name="refresh_portfolio_state",
+    ),
     path("strategy/", include("strategies.urls", namespace="strategy")),
     path("orders/", views.user_orders_view, name="orders"),
     path("orders/<int:order_id>/cancel/", views.cancel_order_view, name="order_cancel"),

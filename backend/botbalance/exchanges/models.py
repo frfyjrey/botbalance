@@ -353,3 +353,176 @@ class PortfolioSnapshot(models.Model):
             else None,
             "created_at": self.created_at.isoformat(),
         }
+
+
+class PortfolioState(models.Model):
+    """
+    Current portfolio state for UI rendering.
+
+    Single source of truth for dashboard display. Each exchange account
+    has one current state that is updated atomically. Historical data
+    is stored separately in PortfolioSnapshot.
+    """
+
+    SOURCE_CHOICES = [
+        ("tick", "Автообновление"),
+        ("manual", "Ручное обновление"),
+    ]
+
+    exchange_account = models.OneToOneField(
+        ExchangeAccount,
+        on_delete=models.CASCADE,
+        related_name="portfolio_state",
+        help_text="Exchange account this state belongs to",
+    )
+
+    ts = models.DateTimeField(help_text="Время последнего расчета (UTC, ISO-8601 с Z)")
+
+    quote_asset = models.CharField(
+        max_length=10, help_text="Базовая валюта стратегии (USDT, USDC, BTC)"
+    )
+
+    nav_quote = models.DecimalField(
+        max_digits=20,
+        decimal_places=8,
+        validators=[MinValueValidator(Decimal("0"))],
+        help_text="Total Net Asset Value in quote currency",
+    )
+
+    positions = models.JSONField(
+        help_text='Asset positions from strategy {"BTCUSDT": {"amount": "0.12", "quote_value": "7234.50"}}'
+    )
+
+    prices = models.JSONField(
+        help_text='Market prices for strategy assets {"BTCUSDT": "60287.1"}'
+    )
+
+    source = models.CharField(
+        max_length=20, choices=SOURCE_CHOICES, help_text="How this state was created"
+    )
+
+    strategy_id = models.PositiveIntegerField(
+        help_text="ID стратегии на момент расчета"
+    )
+
+    universe_symbols = models.JSONField(
+        help_text="Упорядоченный список символов стратегии"
+    )
+
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Portfolio State"
+        verbose_name_plural = "Portfolio States"
+        ordering = ["-updated_at"]
+
+        # Один state на коннектор
+        constraints = [
+            models.UniqueConstraint(
+                fields=["exchange_account"], name="unique_state_per_connector"
+            )
+        ]
+
+        indexes = [
+            # Main query pattern: get state by exchange account
+            models.Index(
+                fields=["exchange_account", "-updated_at"],
+                name="pstate_account_updated",
+            ),
+            # For strategy context queries
+            models.Index(
+                fields=["strategy_id", "-updated_at"], name="pstate_strategy_updated"
+            ),
+        ]
+
+    def __str__(self):
+        return f"State: {self.exchange_account.name} - {self.nav_quote} {self.quote_asset} ({self.ts.strftime('%Y-%m-%d %H:%M')})"
+
+    def clean(self):
+        """Validate model fields."""
+        super().clean()
+
+        # Validate quote_asset format
+        if not self.quote_asset.isupper():
+            raise ValidationError(
+                {"quote_asset": "Quote asset must be uppercase (e.g., USDT, BTC)"}
+            )
+
+        # Validate positions structure
+        if not isinstance(self.positions, dict):
+            raise ValidationError(
+                {"positions": "Positions must be a dictionary of asset data"}
+            )
+
+        # Basic validation of positions format
+        for symbol, data in self.positions.items():
+            if not isinstance(data, dict):
+                raise ValidationError(
+                    {"positions": f"Position data for {symbol} must be a dictionary"}
+                )
+            if "amount" not in data or "quote_value" not in data:
+                raise ValidationError(
+                    {
+                        "positions": f"Position for {symbol} must have 'amount' and 'quote_value' fields"
+                    }
+                )
+
+        # Validate prices structure
+        if not isinstance(self.prices, dict):
+            raise ValidationError({"prices": "Prices must be a dictionary"})
+
+        # Validate universe_symbols structure
+        if not isinstance(self.universe_symbols, list):
+            raise ValidationError(
+                {"universe_symbols": "Universe symbols must be a list"}
+            )
+
+        # Validate consistency between positions and universe_symbols
+        position_symbols = set(self.positions.keys())
+        universe_set = set(self.universe_symbols)
+        if position_symbols != universe_set:
+            raise ValidationError(
+                {
+                    "positions": f"Position symbols {position_symbols} must match universe symbols {universe_set}"
+                }
+            )
+
+    def save(self, *args, **kwargs):
+        """Override save to run validation."""
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def get_asset_count(self) -> int:
+        """Get number of assets in this state."""
+        return len(self.positions)
+
+    def get_largest_position(self) -> tuple[str, Decimal] | None:
+        """Get asset with largest quote value."""
+        if not self.positions:
+            return None
+
+        max_asset = max(
+            self.positions.items(),
+            key=lambda x: Decimal(str(x[1].get("quote_value", 0))),
+        )
+        return max_asset[0], Decimal(str(max_asset[1]["quote_value"]))
+
+    def to_summary_dict(self) -> dict:
+        """Convert state to dictionary for API responses."""
+        return {
+            "ts": self.ts.isoformat(),
+            "quote_asset": self.quote_asset,
+            "nav_quote": str(self.nav_quote),
+            "connector_id": self.exchange_account.id,
+            "connector_name": self.exchange_account.name,
+            "universe_symbols": self.universe_symbols,
+            "positions": self.positions,
+            "prices": self.prices,
+            "source": self.source,
+            "strategy_id": self.strategy_id,
+            "asset_count": self.get_asset_count(),
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
+        }

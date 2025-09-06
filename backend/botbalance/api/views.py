@@ -3,6 +3,7 @@ API Views for the botbalance project.
 """
 
 from datetime import datetime
+from typing import cast
 
 import redis
 from celery import current_app as celery_app
@@ -16,6 +17,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from botbalance.exchanges.models import ExchangeAccount, PortfolioState
 from botbalance.tasks.tasks import echo_task, heartbeat_task, long_running_task
 from strategies.models import Order
 
@@ -24,6 +26,9 @@ from .serializers import (
     CreateSnapshotResponseSerializer,
     LatestSnapshotResponseSerializer,
     LoginSerializer,
+    PortfolioStateResponseSerializer,
+    RefreshStateRequestSerializer,
+    RefreshStateResponseSerializer,
     SnapshotListResponseSerializer,
     TaskSerializer,
     UserSerializer,
@@ -1860,3 +1865,338 @@ def _convert_snapshot_to_portfolio_summary(snapshot):
     )
 
     return portfolio_summary
+
+
+# =============================================================================
+# PORTFOLIO STATE VIEWS (Etap 4)
+# =============================================================================
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def portfolio_state_view(request):
+    """
+    Get current portfolio state for user's exchange account.
+
+    Fast read-only endpoint that returns the current PortfolioState without
+    making any API calls to exchanges. Returns 404 if state doesn't exist.
+
+    Query parameters:
+    - connector_id (optional): Exchange account ID. If not provided, uses user's active account
+
+    Returns:
+    - 200: Portfolio state data
+    - 404: ERROR_NO_STATE - state not found for connector
+    - 403: Connector doesn't belong to user
+    - 400: Multiple active connectors (need to specify connector_id)
+    """
+    import logging
+
+    from botbalance.exchanges.models import ExchangeAccount
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        # Get connector_id parameter
+        connector_id = request.query_params.get("connector_id")
+
+        if connector_id:
+            # Validate connector belongs to user
+            try:
+                exchange_account = ExchangeAccount.objects.get(
+                    id=connector_id, user=request.user
+                )
+            except ExchangeAccount.DoesNotExist:
+                return Response(
+                    {
+                        "status": "error",
+                        "message": "Exchange account not found or doesn't belong to you",
+                        "error_code": "CONNECTOR_NOT_FOUND",
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+        else:
+            # Auto-select user's active exchange account
+            active_accounts = ExchangeAccount.objects.filter(
+                user=request.user, is_active=True
+            )
+
+            if not active_accounts.exists():
+                return Response(
+                    {
+                        "status": "error",
+                        "message": "No active exchange accounts found",
+                        "error_code": "NO_ACTIVE_CONNECTORS",
+                    },
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            elif active_accounts.count() > 1:
+                return Response(
+                    {
+                        "status": "error",
+                        "message": f"Multiple active exchange accounts found ({active_accounts.count()}). Please specify connector_id parameter.",
+                        "error_code": "MULTIPLE_ACTIVE_CONNECTORS",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            exchange_account = cast(
+                "ExchangeAccount", active_accounts.first()
+            )  # Guaranteed by count() == 1 check above
+
+        # Get PortfolioState for the connector
+        try:
+            portfolio_state = PortfolioState.objects.get(
+                exchange_account=exchange_account
+            )
+        except PortfolioState.DoesNotExist:
+            return Response(
+                {
+                    "status": "error",
+                    "message": f"Portfolio state not found for connector '{exchange_account.name}'",
+                    "error_code": "ERROR_NO_STATE",
+                    "connector_id": exchange_account.id,
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Convert to API response format
+        if portfolio_state is None:  # mypy safety check
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Portfolio state not found",
+                    "error_code": "ERROR_NO_STATE",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        state_data = portfolio_state.to_summary_dict()
+
+        response_data = {
+            "status": "success",
+            "state": state_data,
+        }
+
+        serializer = PortfolioStateResponseSerializer(data=response_data)
+        if serializer.is_valid():
+            logger.info(
+                f"Portfolio state retrieved for user {sanitize_for_logs(request.user.username)}, "
+                f"connector {exchange_account.name}"
+            )
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        else:
+            logger.error(f"Serialization errors: {serializer.errors}")
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Failed to serialize state data",
+                    "error_code": "SERIALIZATION_ERROR",
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error in portfolio_state_view: {e}", exc_info=True)
+
+        return Response(
+            {
+                "status": "error",
+                "message": "Failed to get portfolio state due to an internal error",
+                "error_code": "PORTFOLIO_STATE_ERROR",
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def refresh_portfolio_state_view(request):
+    """
+    Force refresh/create portfolio state for user's exchange account.
+
+    Makes API calls to exchange and updates the PortfolioState. Can fail with
+    various error codes based on the state calculation result.
+
+    Request body:
+    - connector_id (optional): Exchange account ID
+
+    Returns:
+    - 200: State refreshed successfully
+    - 409: NO_ACTIVE_STRATEGY - no active strategy for connector
+    - 422: ERROR_PRICING - unable to get prices for some assets
+    - 429: TOO_MANY_REQUESTS - rate limit exceeded
+    - 403: Connector doesn't belong to user
+    """
+    import asyncio
+    import logging
+
+    from botbalance.exchanges.models import ExchangeAccount
+    from botbalance.exchanges.portfolio_service import portfolio_service
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        # Validate request data
+        request_serializer = RefreshStateRequestSerializer(data=request.data)
+        if not request_serializer.is_valid():
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Invalid request data",
+                    "error_code": "INVALID_REQUEST",
+                    "errors": request_serializer.errors,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        connector_id = request_serializer.validated_data.get("connector_id")
+
+        # Resolve exchange account
+        if connector_id:
+            # Validate connector belongs to user
+            try:
+                exchange_account = ExchangeAccount.objects.get(
+                    id=connector_id, user=request.user
+                )
+            except ExchangeAccount.DoesNotExist:
+                return Response(
+                    {
+                        "status": "error",
+                        "message": "Exchange account not found or doesn't belong to you",
+                        "error_code": "CONNECTOR_NOT_FOUND",
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+        else:
+            # Auto-select user's active exchange account
+            active_accounts = ExchangeAccount.objects.filter(
+                user=request.user, is_active=True
+            )
+
+            if not active_accounts.exists():
+                return Response(
+                    {
+                        "status": "error",
+                        "message": "No active exchange accounts found",
+                        "error_code": "NO_ACTIVE_CONNECTORS",
+                    },
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            elif active_accounts.count() > 1:
+                return Response(
+                    {
+                        "status": "error",
+                        "message": f"Multiple active exchange accounts found ({active_accounts.count()}). Please specify connector_id parameter.",
+                        "error_code": "MULTIPLE_ACTIVE_CONNECTORS",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            exchange_account = cast(
+                "ExchangeAccount", active_accounts.first()
+            )  # Guaranteed by count() == 1 check above
+
+        # Refresh portfolio state
+        portfolio_state, error_code = asyncio.run(
+            portfolio_service.upsert_portfolio_state(exchange_account, source="manual")
+        )
+
+        if error_code:
+            # Handle specific error cases
+            if error_code == "NO_ACTIVE_STRATEGY":
+                return Response(
+                    {
+                        "status": "error",
+                        "message": "No active strategy found for connector",
+                        "error_code": "NO_ACTIVE_STRATEGY",
+                        "connector_id": exchange_account.id,
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+            elif error_code == "ERROR_PRICING":
+                return Response(
+                    {
+                        "status": "error",
+                        "message": "Unable to get prices for some assets",
+                        "error_code": "ERROR_PRICING",
+                        "connector_id": exchange_account.id,
+                        # TODO: Add missing_prices list from actual error
+                    },
+                    status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                )
+            elif error_code == "TOO_MANY_REQUESTS":
+                return Response(
+                    {
+                        "status": "error",
+                        "message": "Rate limit exceeded. Please wait before requesting refresh again",
+                        "error_code": "TOO_MANY_REQUESTS",
+                        "retry_after_seconds": 5,
+                        "connector_id": exchange_account.id,
+                    },
+                    status=status.HTTP_429_TOO_MANY_REQUESTS,
+                )
+            else:
+                # Generic error
+                return Response(
+                    {
+                        "status": "error",
+                        "message": "Failed to refresh portfolio state",
+                        "error_code": error_code,
+                        "connector_id": exchange_account.id,
+                    },
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+        # Success - return updated state
+        if portfolio_state is None:  # Should not happen, but mypy check
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Failed to create portfolio state",
+                    "error_code": "INTERNAL_ERROR",
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        state_data = portfolio_state.to_summary_dict()
+
+        response_data = {
+            "status": "success",
+            "state": state_data,
+        }
+
+        serializer = RefreshStateResponseSerializer(data=response_data)
+        if serializer.is_valid():
+            nav_info = ""
+            if portfolio_state:  # mypy safety check
+                nav_info = (
+                    f": NAV={portfolio_state.nav_quote} {portfolio_state.quote_asset}"
+                )
+            logger.info(
+                f"Portfolio state refreshed for user {sanitize_for_logs(request.user.username)}, "
+                f"connector {exchange_account.name}{nav_info}"
+            )
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        else:
+            logger.error(f"Serialization errors: {serializer.errors}")
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Failed to serialize response",
+                    "error_code": "SERIALIZATION_ERROR",
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error in refresh_portfolio_state_view: {e}", exc_info=True)
+
+        return Response(
+            {
+                "status": "error",
+                "message": "Failed to refresh portfolio state due to an internal error",
+                "error_code": "REFRESH_STATE_ERROR",
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )

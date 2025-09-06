@@ -13,6 +13,8 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils import timezone
 
+from botbalance.exchanges.models import ExchangeAccount
+
 
 class Strategy(models.Model):
     """
@@ -22,10 +24,10 @@ class Strategy(models.Model):
     along with rebalancing parameters and risk management settings.
     """
 
-    user = models.OneToOneField(
+    user = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
-        related_name="strategy",
+        related_name="strategies",
         help_text="User who owns this strategy",
     )
 
@@ -78,6 +80,24 @@ class Strategy(models.Model):
         help_text="Absolute cancel buffer as percentage of price (0.15% default)",
     )
 
+    # Quote Asset Configuration
+    quote_asset = models.CharField(
+        max_length=10,
+        choices=[
+            ("USDT", "USDT"),
+            ("USDC", "USDC"),
+            ("BTC", "BTC"),
+        ],
+        default="USDT",
+        help_text="Базовая валюта стратегии",
+    )
+
+    exchange_account = models.ForeignKey(
+        ExchangeAccount,
+        on_delete=models.CASCADE,
+        help_text="Коннектор для этой стратегии",
+    )
+
     # Status
     is_active = models.BooleanField(
         default=False,
@@ -97,6 +117,14 @@ class Strategy(models.Model):
         verbose_name = "Strategy"
         verbose_name_plural = "Strategies"
         ordering = ["-updated_at"]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["exchange_account"],
+                condition=models.Q(is_active=True),
+                name="one_active_strategy_per_connector",
+            )
+        ]
 
     def __str__(self):
         status = "Active" if self.is_active else "Inactive"
@@ -131,6 +159,21 @@ class Strategy(models.Model):
                     "switch_cancel_buffer_pct": "Cancel buffer must be between 0.00% and 1.00%",
                 }
             )
+
+        # Validate allocation symbols match quote_asset
+        if self.pk:  # Only validate if strategy exists (has allocations)
+            invalid_symbols = []
+            for allocation in self.allocations.all():
+                if not allocation.asset.endswith(self.quote_asset):
+                    invalid_symbols.append(allocation.asset)
+
+            if invalid_symbols:
+                raise ValidationError(
+                    {
+                        "quote_asset": f"All allocation symbols must end with {self.quote_asset}. "
+                        f"Invalid symbols: {', '.join(invalid_symbols)}"
+                    }
+                )
 
     def save(self, *args, **kwargs):
         """Override save to run validation."""
@@ -232,6 +275,17 @@ class StrategyAllocation(models.Model):
                     "target_percentage": "Target percentage must be between 0.01% and 100.00%"
                 }
             )
+
+        # Validate asset symbol matches strategy's quote_asset
+        if self.strategy_id and self.asset:
+            strategy = self.strategy
+            if not self.asset.endswith(strategy.quote_asset):
+                raise ValidationError(
+                    {
+                        "asset": f"Asset symbol '{self.asset}' must end with strategy's quote asset '{strategy.quote_asset}'. "
+                        f"Example: 'BTC{strategy.quote_asset}' instead of '{self.asset}'"
+                    }
+                )
 
     def save(self, *args, **kwargs):
         """Override save to run validation."""

@@ -453,3 +453,104 @@ class LatestSnapshotResponseSerializer(serializers.Serializer):
     snapshot = PortfolioSnapshotDetailSerializer(required=False)
     message = serializers.CharField(required=False)
     error_code = serializers.CharField(required=False)
+
+
+# =============================================================================
+# PORTFOLIO STATE SERIALIZERS (Etap 4)
+# =============================================================================
+
+
+class PortfolioStateSerializer(serializers.Serializer):
+    """Serializer for PortfolioState model."""
+
+    ts = serializers.DateTimeField(help_text="Last calculation timestamp (UTC)")
+    quote_asset = serializers.CharField(
+        max_length=10, help_text="Strategy base currency"
+    )
+    nav_quote = serializers.DecimalField(
+        max_digits=20,
+        decimal_places=8,
+        help_text="Total Net Asset Value in quote currency",
+    )
+    connector_id = serializers.IntegerField(help_text="Exchange account ID")
+    connector_name = serializers.CharField(
+        max_length=100, help_text="Exchange account name"
+    )
+    universe_symbols = serializers.ListField(
+        child=serializers.CharField(), help_text="Strategy universe symbols"
+    )
+    positions = serializers.JSONField(
+        help_text='Asset positions {"BTCUSDT": {"amount": "0.12", "quote_value": "7234.50"}}'
+    )
+    prices = serializers.JSONField(help_text='Market prices {"BTCUSDT": "60287.1"}')
+    source = serializers.CharField(max_length=20, help_text="How state was created")
+    strategy_id = serializers.IntegerField(help_text="Strategy ID at calculation time")
+    asset_count = serializers.IntegerField(help_text="Number of assets in state")
+    created_at = serializers.DateTimeField(help_text="State creation timestamp")
+    updated_at = serializers.DateTimeField(help_text="Last update timestamp")
+
+
+class PortfolioStateResponseSerializer(serializers.Serializer):
+    """Response for GET /api/me/portfolio/state/"""
+
+    status = serializers.CharField(default="success")
+    state = PortfolioStateSerializer(required=False, help_text="Portfolio state data")
+    message = serializers.CharField(required=False, help_text="Response message")
+    error_code = serializers.CharField(
+        required=False, help_text="Error code for debugging"
+    )
+
+
+class RefreshStateRequestSerializer(serializers.Serializer):
+    """Request for POST /api/me/portfolio/state/refresh/"""
+
+    connector_id = serializers.IntegerField(
+        required=False,
+        help_text="Exchange account ID (optional, defaults to user's active account)",
+    )
+
+
+class RefreshStateResponseSerializer(serializers.Serializer):
+    """Response for POST /api/me/portfolio/state/refresh/"""
+
+    status = serializers.CharField(help_text="Response status")
+    state = PortfolioStateSerializer(
+        required=False, help_text="Updated portfolio state"
+    )
+    message = serializers.CharField(required=False, help_text="Response message")
+    error_code = serializers.CharField(
+        required=False, help_text="Error code for debugging"
+    )
+
+    # Error-specific fields
+    missing_prices = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        help_text="Missing price symbols (for ERROR_PRICING)",
+    )
+    connector_id = serializers.IntegerField(
+        required=False, help_text="Connector ID (for error responses)"
+    )
+    retry_after_seconds = serializers.IntegerField(
+        required=False, help_text="Seconds until next retry (for TOO_MANY_REQUESTS)"
+    )
+
+
+class ErrorResponseSerializer(serializers.Serializer):
+    """Generic error response serializer."""
+
+    status = serializers.CharField(default="error")
+    message = serializers.CharField(help_text="Error message")
+    error_code = serializers.CharField(help_text="Error code")
+
+    # Optional error details
+    errors = serializers.JSONField(
+        required=False, help_text="Detailed error information"
+    )
+    missing_prices = serializers.ListField(
+        child=serializers.CharField(), required=False, help_text="Missing prices list"
+    )
+    connector_id = serializers.IntegerField(required=False, help_text="Connector ID")
+    retry_after_seconds = serializers.IntegerField(
+        required=False, help_text="Retry after seconds"
+    )

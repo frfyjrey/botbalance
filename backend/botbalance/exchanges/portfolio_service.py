@@ -12,8 +12,9 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import NamedTuple
 
 from django.core.cache import cache
+from django.utils import timezone
 
-from .models import ExchangeAccount
+from .models import ExchangeAccount, PortfolioState
 from .price_service import price_service
 
 logger = logging.getLogger(__name__)
@@ -769,6 +770,245 @@ class PortfolioService:
             "is_available": not circuit_status["is_open"],
             "circuit_breaker": circuit_status,
         }
+
+    async def calculate_state_for_strategy(
+        self, exchange_account: ExchangeAccount
+    ) -> dict | None:
+        """
+        Calculate portfolio state for a specific strategy (universe-focused).
+
+        Returns state data only for assets that are part of the active strategy,
+        in the strategy's quote asset. Used for PortfolioState creation.
+
+        Args:
+            exchange_account: Exchange account to calculate state for
+
+        Returns:
+            Dict with state data or None if calculation fails:
+            {
+                "quote_asset": "USDT",
+                "nav_quote": Decimal("1234.56"),
+                "positions": {"BTCUSDT": {"amount": "0.12", "quote_value": "7234.50"}},
+                "prices": {"BTCUSDT": "60287.1"},
+                "strategy_id": 1,
+                "universe_symbols": ["BTCUSDT", "ETHUSDT"]
+            }
+        """
+        logger.info(
+            f"Calculating state for strategy on account: {exchange_account.name}"
+        )
+
+        try:
+            # Import Strategy here to avoid circular imports
+            from strategies.models import Strategy
+
+            # 1. Check for active strategy on this connector
+            strategy = Strategy.objects.filter(
+                exchange_account=exchange_account, is_active=True
+            ).first()
+
+            if not strategy:
+                logger.warning(
+                    f"No active strategy found for exchange account {exchange_account.name}"
+                )
+                return None  # Will result in NO_ACTIVE_STRATEGY error
+
+            # 2. Get strategy universe (allocation symbols)
+            allocations = strategy.get_target_allocations()
+            if not allocations:
+                logger.warning(f"Strategy {strategy.name} has no allocations defined")
+                return None
+
+            universe_symbols = list(allocations.keys())
+            logger.info(
+                f"Strategy universe: {universe_symbols} (quote: {strategy.quote_asset})"
+            )
+
+            # 3. Get balances from exchange for ALL assets (not filtered)
+            # We'll filter to universe after getting all balances
+            adapter = exchange_account.get_adapter()
+            all_balances = await adapter.get_balances(exchange_account.account_type)
+
+            if not all_balances:
+                logger.warning(f"No balances found for account {exchange_account.name}")
+                return None
+
+            # 4. Filter balances to only universe symbols
+            # Extract base asset from universe symbols (e.g., BTC from BTCUSDT)
+            base_assets = set()
+            for symbol in universe_symbols:
+                if symbol.endswith(strategy.quote_asset):
+                    base_asset = symbol[: -len(strategy.quote_asset)]
+                    base_assets.add(base_asset)
+                else:
+                    # This should not happen due to validation, but handle gracefully
+                    logger.error(
+                        f"Invalid symbol {symbol} in strategy - doesn't end with {strategy.quote_asset}"
+                    )
+
+            # Filter balances to only base assets from strategy
+            strategy_balances = {
+                asset: balance
+                for asset, balance in all_balances.items()
+                if asset in base_assets and balance > self.MIN_BALANCE_THRESHOLD
+            }
+
+            logger.info(f"Strategy balances found: {list(strategy_balances.keys())}")
+
+            # 5. Get prices for universe symbols (trading pairs)
+            # Build price lookup map: symbol -> pair
+            price_pairs = []
+            asset_to_pair = {}
+            for asset in strategy_balances.keys():
+                pair = f"{asset}{strategy.quote_asset}"
+                price_pairs.append(pair)
+                asset_to_pair[asset] = pair
+
+            # Batch price fetch
+            prices_raw = await self.price_service.get_prices_batch(
+                price_pairs, force_refresh=False
+            )
+            if not prices_raw:
+                prices_raw = {}
+
+            # Get missing prices with fresh fetch
+            missing_pairs = [p for p, price in prices_raw.items() if price is None]
+            if missing_pairs:
+                fresh_prices = await self.price_service.get_prices_batch(
+                    missing_pairs, force_refresh=True
+                )
+                for pair, price in (fresh_prices or {}).items():
+                    prices_raw[pair] = price
+
+            # 6. STRICT price validation - ALL prices must be available
+            missing_prices = []
+            prices = {}
+            for _asset, pair in asset_to_pair.items():
+                price = prices_raw.get(pair)
+                if price is None or price <= 0:
+                    missing_prices.append(pair)
+                else:
+                    prices[pair] = price
+
+            if missing_prices:
+                logger.error(f"Missing prices for: {missing_prices}")
+                return None  # Will result in ERROR_PRICING
+
+            # 7. Calculate positions and NAV
+            positions = {}
+            nav_quote = Decimal("0")
+
+            for asset, balance in strategy_balances.items():
+                pair = asset_to_pair[asset]
+                price = prices[pair]
+
+                quote_value = self._round_decimal(balance * price, 2)
+                positions[pair] = {
+                    "amount": str(balance),
+                    "quote_value": str(quote_value),
+                }
+                nav_quote += quote_value
+
+            # 8. Add quote asset itself if it exists in balances
+            quote_balance = all_balances.get(strategy.quote_asset, Decimal("0"))
+            if quote_balance > self.MIN_BALANCE_THRESHOLD:
+                quote_pair = (
+                    f"{strategy.quote_asset}{strategy.quote_asset}"  # e.g., USDTUSDT
+                )
+                positions[quote_pair] = {
+                    "amount": str(quote_balance),
+                    "quote_value": str(quote_balance),  # 1:1 rate for quote asset
+                }
+                prices[quote_pair] = Decimal("1.0")
+                nav_quote += quote_balance
+
+            nav_quote = self._round_decimal(nav_quote, 8)
+
+            state_data = {
+                "quote_asset": strategy.quote_asset,
+                "nav_quote": nav_quote,
+                "positions": positions,
+                "prices": {k: str(v) for k, v in prices.items()},
+                "strategy_id": strategy.id,
+                "universe_symbols": universe_symbols,
+            }
+
+            logger.info(
+                f"State calculated: NAV={nav_quote} {strategy.quote_asset}, {len(positions)} positions"
+            )
+            return state_data
+
+        except Exception as e:
+            logger.error(f"Failed to calculate state for strategy: {e}", exc_info=True)
+            return None
+
+    async def upsert_portfolio_state(
+        self, exchange_account: ExchangeAccount, source: str = "tick"
+    ) -> tuple[PortfolioState | None, str | None]:
+        """
+        Atomically update/create PortfolioState for exchange account.
+
+        Args:
+            exchange_account: Exchange account to update state for
+            source: Source of the update ("tick", "manual")
+
+        Returns:
+            Tuple of (PortfolioState, error_code) where error_code is None on success
+            Error codes: "NO_ACTIVE_STRATEGY", "ERROR_PRICING", "TOO_MANY_REQUESTS"
+        """
+        logger.info(f"Upserting portfolio state for account: {exchange_account.name}")
+
+        try:
+            # 1. Check cooldown protection (3-5 seconds per connector)
+            cooldown_key = f"portfolio_state_cooldown_{exchange_account.id}"
+            if cache.get(cooldown_key):
+                logger.info(f"Cooldown active for account {exchange_account.name}")
+                return None, "TOO_MANY_REQUESTS"
+
+            # 2. Calculate state data
+            state_data = await self.calculate_state_for_strategy(exchange_account)
+            if state_data is None:
+                # Check specific reason for failure
+                from strategies.models import Strategy
+
+                strategy_exists = Strategy.objects.filter(
+                    exchange_account=exchange_account, is_active=True
+                ).exists()
+
+                if not strategy_exists:
+                    return None, "NO_ACTIVE_STRATEGY"
+                else:
+                    return None, "ERROR_PRICING"
+
+            # 3. Set cooldown (5 seconds)
+            cache.set(cooldown_key, True, 5)
+
+            # 4. Atomically upsert PortfolioState
+            state, created = PortfolioState.objects.update_or_create(
+                exchange_account=exchange_account,
+                defaults={
+                    "ts": timezone.now(),
+                    "quote_asset": state_data["quote_asset"],
+                    "nav_quote": state_data["nav_quote"],
+                    "positions": state_data["positions"],
+                    "prices": state_data["prices"],
+                    "source": source,
+                    "strategy_id": state_data["strategy_id"],
+                    "universe_symbols": state_data["universe_symbols"],
+                },
+            )
+
+            action = "created" if created else "updated"
+            logger.info(
+                f"PortfolioState {action} for account {exchange_account.name}: "
+                f"NAV={state.nav_quote} {state.quote_asset}"
+            )
+
+            return state, None
+
+        except Exception as e:
+            logger.error(f"Failed to upsert portfolio state: {e}", exc_info=True)
+            return None, "ERROR_PRICING"  # Generic error
 
 
 # Singleton instance
