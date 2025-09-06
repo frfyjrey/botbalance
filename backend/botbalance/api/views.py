@@ -1738,7 +1738,7 @@ def test_exchange_account_view(request, account_id):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
-async def check_exchange_account_view(request, account_id):
+def check_exchange_account_view(request, account_id):
     """
     Perform lightweight health check on exchange account.
 
@@ -1749,8 +1749,11 @@ async def check_exchange_account_view(request, account_id):
     Updates health fields and returns status with latency metrics.
     Does not calculate portfolio state or prices.
     """
+    import asyncio
     import time
+    from concurrent.futures import ThreadPoolExecutor
 
+    from asgiref.sync import sync_to_async
     from django.utils import timezone
 
     from botbalance.exchanges.models import ExchangeAccount
@@ -1800,7 +1803,7 @@ async def check_exchange_account_view(request, account_id):
             # Determine overall status
             if public_success and signed_success:
                 status_result = "healthy"
-                account.update_health_success(total_latency)
+                await sync_to_async(account.update_health_success)(total_latency)
             elif public_success and not signed_success:
                 if signed_error and (
                     "API-key" in signed_error
@@ -1808,28 +1811,28 @@ async def check_exchange_account_view(request, account_id):
                     or "Invalid API" in signed_error
                 ):
                     status_result = "auth_error"
-                    account.update_health_error("AUTH_ERROR")
+                    await sync_to_async(account.update_health_error)("AUTH_ERROR")
                 elif signed_error and (
                     "rate limit" in signed_error.lower() or "429" in signed_error
                 ):
                     status_result = "rate_limited"
-                    account.update_health_error("RATE_LIMITED")
+                    await sync_to_async(account.update_health_error)("RATE_LIMITED")
                 else:
                     status_result = "down"
-                    account.update_health_error("API_ERROR")
+                    await sync_to_async(account.update_health_error)("API_ERROR")
             elif not public_success:
                 if public_error and "timeout" in public_error.lower():
                     status_result = "down"
-                    account.update_health_error("TIMEOUT")
+                    await sync_to_async(account.update_health_error)("TIMEOUT")
                 elif abs(time.time() - start_time) > 30:  # Simple time skew check
                     status_result = "time_skew"
-                    account.update_health_error("TIME_SKEW")
+                    await sync_to_async(account.update_health_error)("TIME_SKEW")
                 else:
                     status_result = "down"
-                    account.update_health_error("NETWORK_ERROR")
+                    await sync_to_async(account.update_health_error)("NETWORK_ERROR")
             else:
                 status_result = "down"
-                account.update_health_error("DOWN")
+                await sync_to_async(account.update_health_error)("DOWN")
 
             return {
                 "status": status_result,
@@ -1846,7 +1849,7 @@ async def check_exchange_account_view(request, account_id):
         except Exception as e:
             # Catastrophic failure
             total_latency = int((time.time() - start_time) * 1000)
-            account.update_health_error("CRITICAL_ERROR")
+            await sync_to_async(account.update_health_error)("CRITICAL_ERROR")
             return {
                 "status": "down",
                 "public_ms": None,
@@ -1856,8 +1859,19 @@ async def check_exchange_account_view(request, account_id):
                 "error": str(e),
             }
 
+    def run_async_in_thread():
+        """Run async code in a new thread with fresh event loop."""
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(perform_health_check())
+        finally:
+            loop.close()
+
     try:
-        result = await perform_health_check()
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(run_async_in_thread)
+            result = future.result(timeout=30)  # 30 second timeout
 
         return Response(
             {
@@ -1868,6 +1882,21 @@ async def check_exchange_account_view(request, account_id):
             }
         )
 
+    except TimeoutError:
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.error(f"Health check timeout for account {account_id}")
+
+        account.update_health_error("TIMEOUT")
+        return Response(
+            {
+                "status": "error",
+                "message": "Health check timeout (30 seconds)",
+                "connector_id": account.id,
+            },
+            status=status.HTTP_408_REQUEST_TIMEOUT,
+        )
     except Exception as e:
         import logging
 

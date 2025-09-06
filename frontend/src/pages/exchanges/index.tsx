@@ -461,6 +461,7 @@ const ExchangesPage = () => {
                       />
                       <span
                         className={`text-xs ${getHealthStatusColor(account, 60)}`}
+                        title={`last_success_at: ${account.last_success_at}, last_latency_ms: ${account.last_latency_ms}`}
                       >
                         {getHealthStatusText(account, 60)}
                       </span>

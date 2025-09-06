@@ -108,6 +108,11 @@ class ExchangeAccountSerializer(serializers.ModelSerializer):
 
     # Read-only fields
     last_tested_at = serializers.DateTimeField(read_only=True)
+    # Health monitoring fields (Step 5)
+    last_success_at = serializers.DateTimeField(read_only=True)
+    last_latency_ms = serializers.IntegerField(read_only=True)
+    last_error_code = serializers.CharField(read_only=True)
+    last_error_at = serializers.DateTimeField(read_only=True)
     created_at = serializers.DateTimeField(read_only=True)
     updated_at = serializers.DateTimeField(read_only=True)
 
@@ -128,8 +133,23 @@ class ExchangeAccountSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "last_tested_at",
+            # Health monitoring fields (Step 5)
+            "last_success_at",
+            "last_latency_ms",
+            "last_error_code",
+            "last_error_at",
         ]
-        read_only_fields = ["id", "created_at", "updated_at", "last_tested_at"]
+        read_only_fields = [
+            "id",
+            "created_at",
+            "updated_at",
+            "last_tested_at",
+            # Health monitoring fields (Step 5)
+            "last_success_at",
+            "last_latency_ms",
+            "last_error_code",
+            "last_error_at",
+        ]
 
     def validate_api_secret(self, value):
         """
