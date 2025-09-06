@@ -731,15 +731,22 @@ def user_balances_view(request):
 @permission_classes([IsAuthenticated])
 def portfolio_summary_view(request):
     """
-    Get user's portfolio summary with NAV, asset allocations, and performance data.
+    [DEPRECATED] Get user's portfolio summary with NAV, asset allocations, and performance data.
 
-    For Step 2: Provides complete portfolio snapshot including:
+    ⚠️  DEPRECATED: This endpoint is being phased out in favor of PortfolioState architecture.
+    ⚠️  Use the new endpoints instead:
+    ⚠️    - GET /api/me/portfolio/state/ - for current portfolio state (faster)
+    ⚠️    - POST /api/me/portfolio/state/refresh/ - for manual refresh
+
+    Legacy endpoint for Step 2: Provides complete portfolio snapshot including:
     - Total Net Asset Value (NAV) in USD
     - Individual asset balances and values
     - Percentage allocation of each asset
     - Price cache statistics and data sources
 
     Returns 200 with portfolio data or appropriate error response.
+
+    NOTE: As of Step 5, this endpoint no longer creates portfolio snapshots.
     """
     import asyncio
     import logging
@@ -750,6 +757,12 @@ def portfolio_summary_view(request):
     from .serializers import PortfolioSummaryResponseSerializer
 
     logger = logging.getLogger(__name__)
+
+    # DEPRECATION WARNING
+    logger.warning(
+        f"User {sanitize_for_logs(request.user.username)} is using deprecated /portfolio/summary endpoint. "
+        "Consider migrating to /portfolio/state/ for better performance."
+    )
 
     try:
         # Get user's active exchange account
@@ -865,47 +878,12 @@ def portfolio_summary_view(request):
             "price_cache_stats": portfolio_summary.price_cache_stats,
         }
 
-        # Create portfolio snapshot only if we have fresh data (not using fallback)
-        if not using_fallback:
-            try:
-                from threading import Thread
-
-                from botbalance.exchanges.snapshot_service import snapshot_service
-
-                def create_snapshot_async():
-                    """Create snapshot in background thread."""
-                    try:
-                        snapshot = asyncio.run(
-                            snapshot_service.throttled_create_snapshot(
-                                user=request.user,
-                                exchange_account=exchange_account,
-                                source="summary",
-                            )
-                        )
-                        if snapshot:
-                            logger.debug(
-                                f"Created background snapshot {snapshot.id} for user {sanitize_for_logs(request.user.username)}"
-                            )
-                        else:
-                            logger.debug(
-                                f"Snapshot creation throttled for user {sanitize_for_logs(request.user.username)}"
-                            )
-                    except Exception as e:
-                        logger.warning(
-                            f"Background snapshot creation failed for user {sanitize_for_logs(request.user.username)}: {e}"
-                        )
-
-                # Start background thread (non-blocking)
-                Thread(target=create_snapshot_async, daemon=True).start()
-                logger.debug("Background snapshot creation scheduled for fresh data")
-
-            except Exception as e:
-                # If snapshot creation setup fails, continue with response
-                logger.warning(f"Failed to setup background snapshot creation: {e}")
-        else:
-            logger.debug(
-                "Skipping snapshot creation - using fallback data (exchange unavailable)"
-            )
+        # NOTE: Snapshot creation removed as part of PortfolioState migration (Step 5)
+        # Snapshots are now created from PortfolioState in dedicated endpoints
+        logger.debug(
+            f"Legacy summary endpoint used by {sanitize_for_logs(request.user.username)}, "
+            f"using_fallback={using_fallback}, no snapshot created"
+        )
 
         # Serialize response
         response_data = {

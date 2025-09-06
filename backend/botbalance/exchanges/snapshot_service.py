@@ -13,7 +13,7 @@ import redis
 from django.conf import settings
 from django.contrib.auth.models import User
 
-from .models import ExchangeAccount, PortfolioSnapshot
+from .models import ExchangeAccount, PortfolioSnapshot, PortfolioState
 from .portfolio_service import portfolio_service
 
 
@@ -71,6 +71,9 @@ class SnapshotService:
         """
         Create a portfolio snapshot for the user.
 
+        NEW BEHAVIOR: Prioritizes copying from PortfolioState over recalculation.
+        Falls back to legacy calculation only if PortfolioState doesn't exist.
+
         Args:
             user: User to create snapshot for
             exchange_account: Exchange account (can be None if user has no accounts)
@@ -87,14 +90,32 @@ class SnapshotService:
                 f"account: {exchange_account.name if exchange_account else 'None'}"
             )
 
-            # If no exchange account, we can't calculate portfolio
+            # If no exchange account, we can't create snapshot
             if not exchange_account:
                 logger.warning(
                     f"User {sanitize_for_logs(user.username)} has no active exchange account, cannot create snapshot"
                 )
                 return None
 
-            # Calculate portfolio data
+            # NEW: Try to create snapshot from PortfolioState first (preferred method)
+            if PortfolioState.objects.filter(
+                exchange_account=exchange_account
+            ).exists():
+                logger.info(
+                    f"Found PortfolioState for {exchange_account.name}, creating snapshot from State"
+                )
+                return await self.create_snapshot_from_state(
+                    user=user,
+                    exchange_account=exchange_account,
+                    source=source,
+                    strategy_version=strategy_version,
+                )
+            else:
+                logger.info(
+                    f"No PortfolioState for {exchange_account.name}, falling back to legacy calculation"
+                )
+
+            # FALLBACK: Use legacy portfolio calculation method
             portfolio_summary = await portfolio_service.calculate_portfolio_summary(
                 exchange_account,
                 force_refresh_prices=(source in ["order_fill", "cron"]),
@@ -106,7 +127,7 @@ class SnapshotService:
                 )
                 return None
 
-            # Prepare snapshot data
+            # Prepare snapshot data from legacy summary
             snapshot_data = self._prepare_snapshot_data(portfolio_summary)
 
             # Create snapshot (use sync_to_async for Django ORM in async context)
@@ -128,7 +149,7 @@ class SnapshotService:
             snapshot = await create_snapshot_sync()
 
             logger.info(
-                f"Created snapshot {snapshot.id} for user {sanitize_for_logs(user.username)}: "
+                f"Created snapshot {snapshot.id} (legacy) for user {sanitize_for_logs(user.username)}: "
                 f"NAV={snapshot.nav_quote} {snapshot.quote_asset}, "
                 f"assets={snapshot.get_asset_count()}"
             )
@@ -138,6 +159,82 @@ class SnapshotService:
         except Exception as e:
             logger.error(
                 f"Failed to create snapshot for user {sanitize_for_logs(user.username)}: {e}",
+                exc_info=True,
+            )
+            return None
+
+    async def create_snapshot_from_state(
+        self,
+        user: User,
+        exchange_account: ExchangeAccount,
+        source: str,
+        strategy_version: int | None = None,
+    ) -> PortfolioSnapshot | None:
+        """
+        Create a portfolio snapshot by copying data from existing PortfolioState.
+
+        This is the new preferred method that avoids recalculating portfolio data
+        and instead copies from the current PortfolioState.
+
+        Args:
+            user: User to create snapshot for
+            exchange_account: Exchange account to get state from
+            source: How this snapshot was created (order_fill/cron/manual)
+            strategy_version: Version of strategy when snapshot was taken (optional)
+
+        Returns:
+            Created PortfolioSnapshot or None if failed
+        """
+        try:
+            logger.info(
+                f"Creating {source} snapshot from State for user {sanitize_for_logs(user.username)}, "
+                f"account: {exchange_account.name}"
+            )
+
+            # Get current PortfolioState for this exchange account
+            try:
+                portfolio_state = PortfolioState.objects.get(
+                    exchange_account=exchange_account
+                )
+            except PortfolioState.DoesNotExist:
+                logger.warning(
+                    f"No PortfolioState found for user {sanitize_for_logs(user.username)}, "
+                    f"account {exchange_account.name}. Cannot create snapshot from State."
+                )
+                return None
+
+            # Prepare snapshot data from State
+            snapshot_data = self._prepare_snapshot_data_from_state(portfolio_state)
+
+            # Create snapshot (use sync_to_async for Django ORM in async context)
+            from asgiref.sync import sync_to_async
+
+            @sync_to_async
+            def create_snapshot_sync():
+                return PortfolioSnapshot.objects.create(
+                    user=user,
+                    exchange_account=exchange_account,
+                    quote_asset=snapshot_data.quote_asset,
+                    nav_quote=snapshot_data.nav_quote,
+                    positions=snapshot_data.positions,
+                    prices={k: str(v) for k, v in snapshot_data.prices.items()},
+                    source=source,
+                    strategy_version=strategy_version,
+                )
+
+            snapshot = await create_snapshot_sync()
+
+            logger.info(
+                f"Created snapshot {snapshot.id} from State for user {sanitize_for_logs(user.username)}: "
+                f"NAV={snapshot.nav_quote} {snapshot.quote_asset}, "
+                f"assets={snapshot.get_asset_count()}"
+            )
+
+            return snapshot
+
+        except Exception as e:
+            logger.error(
+                f"Failed to create snapshot from State for user {sanitize_for_logs(user.username)}: {e}",
                 exc_info=True,
             )
             return None
@@ -226,6 +323,33 @@ class SnapshotService:
             positions=positions,
             prices=prices,
             quote_asset=portfolio_summary.quote_currency,
+        )
+
+    def _prepare_snapshot_data_from_state(
+        self, portfolio_state: PortfolioState
+    ) -> SnapshotData:
+        """
+        Convert PortfolioState to snapshot data format.
+
+        Args:
+            portfolio_state: PortfolioState from database
+
+        Returns:
+            SnapshotData ready for database storage
+        """
+        # PortfolioState already has the correct format, just copy data
+        positions = portfolio_state.positions  # Already in correct format
+
+        # Convert prices from str to Decimal
+        prices = {}
+        if portfolio_state.prices:
+            prices = {k: Decimal(str(v)) for k, v in portfolio_state.prices.items()}
+
+        return SnapshotData(
+            nav_quote=portfolio_state.nav_quote,
+            positions=positions,
+            prices=prices,
+            quote_asset=portfolio_state.quote_asset,
         )
 
     def get_recent_snapshots(

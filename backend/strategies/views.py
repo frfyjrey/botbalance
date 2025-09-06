@@ -608,6 +608,30 @@ def rebalance_execute_view(request):
                     }
                 )
 
+            # NEW: Create snapshot after successful order placement (Step 5 integration)
+            try:
+                from botbalance.exchanges.snapshot_service import snapshot_service
+
+                snapshot = asyncio.run(
+                    snapshot_service.create_snapshot_from_state(
+                        user=request.user,
+                        exchange_account=exchange_account,
+                        source="order_fill",  # After order execution
+                        strategy_version=strategy.id,
+                    )
+                )
+                if snapshot:
+                    logger.info(
+                        f"Created post-rebalance snapshot {snapshot.id} for user {sanitized_user}"
+                    )
+                else:
+                    logger.warning(
+                        f"Failed to create post-rebalance snapshot for user {sanitized_user}"
+                    )
+            except Exception as e:
+                # Don't fail rebalance response if snapshot creation fails
+                logger.warning(f"Post-rebalance snapshot creation failed: {e}")
+
             return Response(
                 {
                     "status": "success",

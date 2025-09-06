@@ -102,20 +102,76 @@ class RebalanceService:
         try:
             logger.info(f"Calculating rebalance plan for strategy: {strategy.name}")
 
-            # Get current portfolio
-            portfolio_summary = (
-                await self.portfolio_service.calculate_portfolio_summary(
-                    exchange_account, force_refresh_prices
-                )
+            # NEW: First update PortfolioState for the connector before rebalancing
+            logger.info(
+                f"Updating PortfolioState for {exchange_account.name} before rebalancing"
+            )
+            (
+                portfolio_state,
+                error_code,
+            ) = await self.portfolio_service.upsert_portfolio_state(
+                exchange_account,
+                source="tick",  # Rebalancing trigger
             )
 
-            if not portfolio_summary:
-                logger.error("Failed to get portfolio summary")
+            if error_code:
+                logger.error(
+                    f"Cannot rebalance strategy {strategy.name}: PortfolioState error: {error_code}"
+                )
+                if error_code == "ERROR_PRICING":
+                    logger.error(
+                        "Pricing data unavailable - cannot place orders without accurate prices"
+                    )
+                elif error_code == "TOO_MANY_REQUESTS":
+                    logger.warning("Rate limited - skipping rebalance for this cycle")
+                elif error_code == "NO_ACTIVE_STRATEGY":
+                    logger.error("No active strategy found for connector")
                 return None
 
-            if portfolio_summary.total_nav == 0:
+            if not portfolio_state:
+                logger.error("Failed to create/update PortfolioState")
+                return None
+
+            # Convert PortfolioState to portfolio data format
+            if portfolio_state.nav_quote == 0:
                 logger.warning("Portfolio NAV is zero, cannot rebalance")
                 return None
+
+            # Create portfolio_summary equivalent from PortfolioState
+            from types import SimpleNamespace
+
+            assets = []
+            for symbol, position_data in portfolio_state.positions.items():
+                amount = Decimal(str(position_data["amount"]))
+                quote_value = Decimal(str(position_data["quote_value"]))
+
+                # Get price from PortfolioState prices
+                price_usd = None
+                if portfolio_state.prices and symbol != portfolio_state.quote_asset:
+                    price_symbol = f"{symbol}{portfolio_state.quote_asset}"
+                    if price_symbol in portfolio_state.prices:
+                        price_usd = Decimal(str(portfolio_state.prices[price_symbol]))
+
+                asset = SimpleNamespace(
+                    symbol=symbol,
+                    balance=amount,
+                    value_usd=quote_value,
+                    price_usd=price_usd,
+                )
+                assets.append(asset)
+
+            # Create portfolio_summary equivalent
+            portfolio_summary = SimpleNamespace(
+                assets=assets,
+                total_nav=portfolio_state.nav_quote,
+                quote_currency=portfolio_state.quote_asset,
+                timestamp=portfolio_state.ts,
+                exchange_account=exchange_account.name,
+            )
+
+            logger.info(
+                f"Using PortfolioState for rebalancing: NAV={portfolio_state.nav_quote} {portfolio_state.quote_asset}"
+            )
 
             # Get target allocations from strategy
             target_allocations = await sync_to_async(strategy.get_target_allocations)()

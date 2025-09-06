@@ -14,8 +14,17 @@ from strategies.models import Order, Strategy
 
 @pytest.mark.django_db
 def test_orders_list_filters(authenticated_api_client, user):
-    # Prepare strategy and orders
-    strategy = Strategy.objects.create(user=user)
+    # Prepare exchange account and strategy
+    exchange_account = ExchangeAccount.objects.create(
+        user=user,
+        exchange="binance",
+        account_type="spot",
+        name="Test Account",
+        is_active=True,
+        api_key="test_key",
+        api_secret="test_secret",
+    )
+    strategy = Strategy.objects.create(user=user, exchange_account=exchange_account)
     Order.objects.create(
         user=user,
         strategy=strategy,
@@ -54,7 +63,17 @@ def test_orders_list_filters(authenticated_api_client, user):
 
 @pytest.mark.django_db
 def test_cancel_order_endpoint(authenticated_api_client, user, monkeypatch):
-    strategy = Strategy.objects.create(user=user)
+    # Prepare exchange account and strategy
+    exchange_account = ExchangeAccount.objects.create(
+        user=user,
+        exchange="binance",
+        account_type="spot",
+        name="Test Account",
+        is_active=True,
+        api_key="test_key",
+        api_secret="test_secret",
+    )
+    strategy = Strategy.objects.create(user=user, exchange_account=exchange_account)
     order = Order.objects.create(
         user=user,
         strategy=strategy,
