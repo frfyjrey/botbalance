@@ -127,8 +127,7 @@ class TestBinanceSpotTestnetSmoke:
     """Smoke-test for Binance Spot testnet if keys are provided via env and enabled."""
 
     @pytest.mark.skipif(
-        __import__("os").getenv("USE_LIVE_EXCHANGE", "false").lower() != "true"
-        or __import__("os").getenv("EXCHANGE_ENV", "mock").lower() != "testnet"
+        __import__("os").getenv("EXCHANGE_ENV", "mock").lower() != "live"
         or __import__("os").getenv("ENABLE_SYSTEM_TESTNET_ACCOUNT", "false").lower()
         != "true"
         or not __import__("os").getenv("BINANCE_SPOT_TESTNET_API_KEY")
@@ -163,7 +162,7 @@ class TestBinanceSpotTestnetSmoke:
             assert order["id"]
             open_orders = await adapter.get_open_orders(symbol=symbol)
             assert isinstance(open_orders, list)
-            ok = await adapter.cancel_order(order["id"])
+            ok = await adapter.cancel_order(symbol=symbol, order_id=order["id"])
             assert ok is True
 
         asyncio.run(run_flow())

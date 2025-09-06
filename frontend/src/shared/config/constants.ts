@@ -23,6 +23,8 @@ export const ROUTES = {
   ADMIN_DASHBOARD: '/admin-dashboard',
   PROFILE: '/profile',
   TASKS: '/tasks',
+  ORDERS: '/orders',
+  EXCHANGES: '/exchanges',
 } as const;
 
 // API Endpoints
@@ -39,6 +41,12 @@ export const API_ENDPOINTS = {
   TASKS_ECHO: '/api/tasks/echo/',
   TASKS_HEARTBEAT: '/api/tasks/heartbeat/',
   TASKS_STATUS: '/api/tasks/status/',
+
+  // Orders
+  ORDERS: '/api/me/orders/',
+  ORDER_CANCEL: (id: number) => `/api/me/orders/${id}/cancel/`,
+  ORDERS_CANCEL_ALL: (symbol: string) =>
+    `/api/me/orders/cancel_all/?symbol=${encodeURIComponent(symbol)}`,
 } as const;
 
 // Query Keys for TanStack Query
@@ -53,6 +61,7 @@ export const QUERY_KEYS = {
   STRATEGY: 'strategy',
   REBALANCE_PLAN: 'rebalance-plan',
   ORDERS: 'orders',
+  EXCHANGE_ACCOUNTS: 'exchange-accounts',
 } as const;
 
 // Theme

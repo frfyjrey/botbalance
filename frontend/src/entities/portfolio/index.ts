@@ -6,3 +6,4 @@ export type {
   PortfolioSummaryResponse,
   PortfolioCacheStats,
 } from './model';
+export { isUsingFallbackData, getExchangeStatusMessage } from './model';

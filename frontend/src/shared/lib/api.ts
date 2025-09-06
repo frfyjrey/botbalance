@@ -21,6 +21,10 @@ import type {
   TaskStatusResponse,
   User,
 } from '../config/types';
+import type {
+  ExchangeAccount,
+  ExchangeAccountCreateRequest,
+} from '../../entities/exchange';
 
 /**
  * Token management
@@ -323,11 +327,157 @@ export const apiClient = {
     );
   },
 
+  // Orders endpoints
+  async getOrders(params?: {
+    limit?: number;
+    offset?: number;
+    status?: string;
+    symbol?: string;
+    side?: string;
+    exchange?: string;
+  }): Promise<{
+    status: string;
+    orders: Array<{
+      id: number;
+      exchange_order_id: string | null;
+      client_order_id: string | null;
+      exchange: string;
+      symbol: string;
+      side: 'buy' | 'sell';
+      status: string;
+      limit_price: string;
+      quote_amount: string;
+      filled_amount: string;
+      fill_percentage: string;
+      fee_amount: string;
+      fee_asset: string | null;
+      created_at: string;
+      submitted_at: string | null;
+      filled_at: string | null;
+      updated_at: string;
+      error_message: string | null;
+      strategy_name: string | null;
+      execution_id: number | null;
+      is_active: boolean;
+    }>;
+    total: number;
+    limit: number;
+    offset: number;
+    has_more: boolean;
+  }> {
+    const qs = new URLSearchParams();
+    if (params?.limit) qs.set('limit', params.limit.toString());
+    if (params?.offset) qs.set('offset', params.offset.toString());
+    if (params?.status) qs.set('status', params.status);
+    if (params?.symbol) qs.set('symbol', params.symbol);
+    if (params?.side) qs.set('side', params.side);
+    if (params?.exchange) qs.set('exchange', params.exchange);
+    const url = `/api/me/orders/${qs.toString() ? `?${qs.toString()}` : ''}`;
+    return apiRequest(url);
+  },
+
+  async cancelOrder(
+    orderId: number,
+  ): Promise<{ status: string; order_id?: number }> {
+    return apiRequest(`/api/me/orders/${orderId}/cancel/`, { method: 'POST' });
+  },
+
+  async cancelAllOrders(
+    symbol: string,
+  ): Promise<{ status: string; cancelled: number }> {
+    return apiRequest(
+      `/api/me/orders/cancel_all/?symbol=${encodeURIComponent(symbol)}`,
+      { method: 'POST' },
+    );
+  },
+
   // Generic request method for custom calls
   async request<T = unknown>(
     endpoint: string,
     options?: RequestInit,
   ): Promise<T> {
     return apiRequest<T>(endpoint, options);
+  },
+
+  // Exchange accounts management
+  async getExchangeAccounts(): Promise<{
+    status: string;
+    accounts: ExchangeAccount[];
+  }> {
+    return apiRequest<{ status: string; accounts: ExchangeAccount[] }>(
+      '/api/me/exchanges/',
+      {
+        method: 'GET',
+      },
+    );
+  },
+
+  async createExchangeAccount(data: ExchangeAccountCreateRequest): Promise<{
+    status: string;
+    message: string;
+    account: ExchangeAccount;
+  }> {
+    return apiRequest<{
+      status: string;
+      message: string;
+      account: ExchangeAccount;
+    }>('/api/me/exchanges/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async getExchangeAccount(
+    id: number,
+  ): Promise<{ status: string; account: ExchangeAccount }> {
+    return apiRequest<{ status: string; account: ExchangeAccount }>(
+      `/api/me/exchanges/${id}/`,
+      {
+        method: 'GET',
+      },
+    );
+  },
+
+  async updateExchangeAccount(
+    id: number,
+    data: Partial<ExchangeAccountCreateRequest>,
+  ): Promise<{
+    status: string;
+    message: string;
+    account: ExchangeAccount;
+  }> {
+    return apiRequest<{
+      status: string;
+      message: string;
+      account: ExchangeAccount;
+    }>(`/api/me/exchanges/${id}/`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteExchangeAccount(
+    id: number,
+  ): Promise<{ status: string; message: string }> {
+    return apiRequest<{ status: string; message: string }>(
+      `/api/me/exchanges/${id}/`,
+      {
+        method: 'DELETE',
+      },
+    );
+  },
+
+  async testExchangeAccount(id: number): Promise<{
+    status: string;
+    message: string;
+    last_tested_at?: string;
+  }> {
+    return apiRequest<{
+      status: string;
+      message: string;
+      last_tested_at?: string;
+    }>(`/api/me/exchanges/${id}/test/`, {
+      method: 'POST',
+    });
   },
 };

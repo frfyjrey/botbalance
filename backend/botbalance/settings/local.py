@@ -40,6 +40,13 @@ LOGGING["root"]["level"] = "DEBUG"
 LOGGING["loggers"]["django"]["level"] = "INFO"  # Снижаем общий уровень Django
 LOGGING["loggers"]["celery"]["level"] = "DEBUG"
 
+# Включаем DEBUG для Exchange адаптеров
+LOGGING["loggers"]["botbalance.exchanges"] = {
+    "handlers": ["console"],
+    "level": "DEBUG",
+    "propagate": False,
+}
+
 # Включаем SQL запросы в DEBUG
 LOGGING["loggers"]["django.db.backends"] = {
     "handlers": ["console"],
@@ -67,6 +74,13 @@ LOGGING["loggers"]["django.core.management.commands.runserver"] = {
     "propagate": False,
 }
 
+# Включаем логирование HTTP запросов
+LOGGING["loggers"]["django.request"] = {
+    "handlers": ["console"],
+    "level": "INFO",  # Показываем все HTTP запросы
+    "propagate": False,
+}
+
 # =============================================================================
 # DEVELOPMENT TOOLS
 # =============================================================================
@@ -85,3 +99,36 @@ CACHES = {
 STATICFILES_DIRS = [
     BASE_DIR / "static",
 ]
+
+
+# ВАЖНО: Переопределяем переменные окружения для разработки OKX
+import os
+
+os.environ["EXCHANGE_ENV"] = "live"  # mock | live
+os.environ["ENABLE_SMOKE_TESTS"] = "true"  # Включаем smoke тесты для разработки
+
+# =============================================================================
+# JWT SETTINGS FOR DEVELOPMENT (longer sessions to avoid frequent logouts)
+# =============================================================================
+
+from datetime import timedelta
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(hours=8),  # 8 часов для разработки
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=30),  # 30 дней для разработки
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "UPDATE_LAST_LOGIN": True,
+    "ALGORITHM": "HS256",
+    "SIGNING_KEY": SECRET_KEY,
+}
+
+# =============================================================================
+# SESSION SETTINGS FOR DEVELOPMENT (prevent HMR logout issues)
+# =============================================================================
+
+SESSION_COOKIE_AGE = 28800  # 8 часов в секундах
+SESSION_SAVE_EVERY_REQUEST = True  # Обновлять сессию при каждом запросе
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False  # Не истекать при закрытии браузера
+SESSION_COOKIE_SECURE = False  # Для localhost HTTP
+CSRF_COOKIE_SECURE = False  # Для localhost HTTP

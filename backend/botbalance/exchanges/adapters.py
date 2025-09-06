@@ -16,7 +16,7 @@ class Order(TypedDict):
     client_order_id: str | None
     symbol: str
     side: str  # "buy" | "sell"
-    status: str  # "PENDING" | "FILLED" | "CANCELLED" | "REJECTED"
+    status: str  # "PENDING" | "FILLED" | "CANCELED" | "REJECTED"
     limit_price: Decimal
     quote_amount: Decimal  # Amount in quote currency (USDT, etc.)
     filled_amount: Decimal  # Actually filled amount
@@ -31,7 +31,13 @@ class ExchangeAdapter(ABC):
     All implementations must follow the interface defined in docs/exchange_adapter.md.
     """
 
-    def __init__(self, api_key: str, api_secret: str, testnet: bool = False):
+    def __init__(
+        self,
+        api_key: str,
+        api_secret: str,
+        testnet: bool = False,
+        passphrase: str | None = None,
+    ):
         """
         Initialize adapter with credentials.
 
@@ -39,10 +45,12 @@ class ExchangeAdapter(ABC):
             api_key: Exchange API key
             api_secret: Exchange API secret
             testnet: Whether to use testnet/sandbox environment
+            passphrase: Exchange API passphrase (used by some exchanges like OKX)
         """
         self.api_key = api_key
         self.api_secret = api_secret
         self.testnet = testnet
+        self.passphrase = passphrase
 
     @abstractmethod
     def exchange(self) -> str:
@@ -123,31 +131,53 @@ class ExchangeAdapter(ABC):
 
     @abstractmethod
     async def get_order_status(
-        self, order_id: str, *, account: str | None = None
+        self,
+        symbol: str,
+        *,
+        order_id: str | None = None,
+        client_order_id: str | None = None,
+        account: str | None = None,
     ) -> Order:
         """
-        Get order status by ID.
+        Get order status by ID with explicit symbol.
 
         Args:
+            symbol: Trading pair symbol (e.g. "BTCUSDT") - REQUIRED
             order_id: Exchange order ID
+            client_order_id: Client order ID
             account: Account type (optional, but may be required by some exchanges)
 
         Returns:
             Order object with current status
+
+        Raises:
+            ValueError: If symbol missing or both/neither IDs provided
         """
         pass
 
     @abstractmethod
-    async def cancel_order(self, order_id: str, *, account: str | None = None) -> bool:
+    async def cancel_order(
+        self,
+        *,
+        symbol: str,
+        order_id: str | None = None,
+        client_order_id: str | None = None,
+        account: str | None = None,
+    ) -> bool:
         """
-        Cancel order by ID.
+        Cancel order by ID with explicit symbol.
 
         Args:
+            symbol: Trading pair symbol (e.g. "BTCUSDT") - REQUIRED
             order_id: Exchange order ID
+            client_order_id: Client order ID
             account: Account type (optional)
 
         Returns:
-            True if cancellation successful
+            True if cancellation successful (idempotent)
+
+        Raises:
+            ValueError: If symbol missing or both/neither IDs provided
         """
         pass
 

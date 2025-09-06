@@ -7,9 +7,11 @@ import { BalancesCard } from '@features/balance';
 import {
   PortfolioSummaryCard,
   AssetAllocationChart,
-  AssetsList,
+  PortfolioAssetsCard,
   PortfolioSnapshots,
 } from '@features/portfolio';
+import { ExchangeStatusIndicator } from '@features/dashboard';
+import { AssetsList } from '@features/portfolio/assets-list';
 
 export const DashboardContent = () => {
   const { t } = useTranslation('dashboard');
@@ -37,6 +39,9 @@ export const DashboardContent = () => {
       {/* Main Content - Simple user dashboard */}
       <main className="max-w-7xl mx-auto py-4 sm:py-6 lg:py-8 px-3 sm:px-4 lg:px-8">
         <div className="space-y-4 sm:space-y-6">
+          {/* Exchange Status - Circuit Breaker Info */}
+          <ExchangeStatusIndicator />
+
           {/* Portfolio Overview - Step 2 Complete */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
             <PortfolioSummaryCard />
@@ -46,7 +51,10 @@ export const DashboardContent = () => {
           {/* Portfolio Details */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6">
             <AssetAllocationChart />
-            <AssetsList maxItems={8} />
+            <div className="space-y-4">
+              <PortfolioAssetsCard maxItems={10} />
+              <AssetsList maxItems={10} />
+            </div>
           </div>
 
           {/* Portfolio Snapshots - Step 2 */}

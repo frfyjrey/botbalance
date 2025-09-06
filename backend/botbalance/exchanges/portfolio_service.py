@@ -6,14 +6,150 @@ and portfolio summary data for the dashboard.
 """
 
 import logging
+import time
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 from typing import NamedTuple
+
+from django.core.cache import cache
 
 from .models import ExchangeAccount
 from .price_service import price_service
 
 logger = logging.getLogger(__name__)
+
+
+class ExchangeCircuitBreaker:
+    """
+    Circuit breaker pattern for exchange API calls.
+
+    Prevents repeated failed calls to unavailable exchanges by tracking failures
+    and temporarily disabling calls when failure threshold is reached.
+    """
+
+    def __init__(self, failure_threshold: int = 3, circuit_timeout: int = 600):
+        """
+        Initialize circuit breaker.
+
+        Args:
+            failure_threshold: Number of failures before opening circuit
+            circuit_timeout: Time in seconds to keep circuit open
+        """
+        self.failure_threshold = failure_threshold
+        self.circuit_timeout = circuit_timeout
+
+    def _get_exchange_key(self, exchange_account: ExchangeAccount) -> str:
+        """Generate unique key for exchange account."""
+        return f"{exchange_account.exchange}_{exchange_account.testnet}_{exchange_account.account_type}"
+
+    def should_attempt_call(self, exchange_account: ExchangeAccount) -> bool:
+        """
+        Check if we should attempt a call to the exchange.
+
+        Returns:
+            False if circuit is OPEN (exchange marked as down)
+            True if circuit is CLOSED (safe to attempt call)
+        """
+        exchange_key = self._get_exchange_key(exchange_account)
+
+        # Get failure count and last failure time
+        failures_key = f"circuit_failures_{exchange_key}"
+        last_failure_key = f"circuit_last_failure_{exchange_key}"
+
+        failure_count = cache.get(failures_key, 0)
+        last_failure_time = cache.get(last_failure_key, 0)
+
+        # If we haven't reached failure threshold, allow call
+        if failure_count < self.failure_threshold:
+            return True
+
+        # Circuit is potentially OPEN - check if timeout has passed
+        current_time = time.time()
+        if current_time - last_failure_time > self.circuit_timeout:
+            # Timeout passed - reset circuit and allow one probe call
+            logger.info(
+                f"Circuit breaker timeout expired for {exchange_key}, allowing probe call"
+            )
+            self._reset_circuit(exchange_account)
+            return True
+
+        # Circuit is OPEN - block call
+        logger.debug(f"Circuit breaker OPEN for {exchange_key}, blocking call")
+        return False
+
+    def record_success(self, exchange_account: ExchangeAccount):
+        """Record successful call - reset circuit if it was open."""
+        exchange_key = self._get_exchange_key(exchange_account)
+
+        failures_key = f"circuit_failures_{exchange_key}"
+        failure_count = cache.get(failures_key, 0)
+
+        if failure_count > 0:
+            logger.info(f"Exchange {exchange_key} recovered, resetting circuit breaker")
+            self._reset_circuit(exchange_account)
+
+    def record_failure(self, exchange_account: ExchangeAccount, exception: Exception):
+        """Record failed call - potentially open circuit."""
+        exchange_key = self._get_exchange_key(exchange_account)
+
+        failures_key = f"circuit_failures_{exchange_key}"
+        last_failure_key = f"circuit_last_failure_{exchange_key}"
+
+        # Increment failure count
+        failure_count = cache.get(failures_key, 0) + 1
+        cache.set(failures_key, failure_count, self.circuit_timeout)
+        cache.set(last_failure_key, time.time(), self.circuit_timeout)
+
+        if failure_count >= self.failure_threshold:
+            logger.warning(
+                f"Circuit breaker OPENED for {exchange_key} after {failure_count} failures. "
+                f"Next retry in {self.circuit_timeout // 60} minutes. Error: {exception}"
+            )
+        else:
+            logger.debug(
+                f"Recorded failure {failure_count}/{self.failure_threshold} for {exchange_key}"
+            )
+
+    def _reset_circuit(self, exchange_account: ExchangeAccount):
+        """Reset circuit breaker to CLOSED state."""
+        exchange_key = self._get_exchange_key(exchange_account)
+
+        failures_key = f"circuit_failures_{exchange_key}"
+        last_failure_key = f"circuit_last_failure_{exchange_key}"
+
+        cache.delete(failures_key)
+        cache.delete(last_failure_key)
+
+    def is_circuit_open(self, exchange_account: ExchangeAccount) -> bool:
+        """Check if circuit is currently OPEN (exchange marked as down)."""
+        return not self.should_attempt_call(exchange_account)
+
+    def get_circuit_status(self, exchange_account: ExchangeAccount) -> dict:
+        """Get detailed circuit status for monitoring."""
+        exchange_key = self._get_exchange_key(exchange_account)
+
+        failures_key = f"circuit_failures_{exchange_key}"
+        last_failure_key = f"circuit_last_failure_{exchange_key}"
+
+        failure_count = cache.get(failures_key, 0)
+        last_failure_time = cache.get(last_failure_key, 0)
+
+        is_open = failure_count >= self.failure_threshold
+        time_until_retry = 0
+
+        if is_open and last_failure_time:
+            time_until_retry = max(
+                0, self.circuit_timeout - (time.time() - last_failure_time)
+            )
+
+        return {
+            "exchange_key": exchange_key,
+            "is_open": is_open,
+            "failure_count": failure_count,
+            "failure_threshold": self.failure_threshold,
+            "last_failure_time": last_failure_time,
+            "time_until_retry_seconds": int(time_until_retry),
+        }
 
 
 class Balance(NamedTuple):
@@ -64,6 +200,10 @@ class PortfolioService:
 
     def __init__(self):
         self.price_service = price_service
+        self.circuit_breaker = ExchangeCircuitBreaker(
+            failure_threshold=3,  # Open circuit after 3 failures
+            circuit_timeout=600,  # Keep circuit open for 10 minutes
+        )
 
     def _round_decimal(self, value: Decimal, precision: int) -> Decimal:
         """Round decimal to specified precision."""
@@ -97,28 +237,48 @@ class PortfolioService:
         if asset in {"USDT", "USDC", "BUSD", "DAI", "TUSD"}:
             return Decimal("1.00"), "stablecoin"
 
-        # Get trading pair and fetch price
-        pair = self._get_trading_pair(asset, quote)
-        if not pair:
-            return Decimal("1.00"), "stablecoin"
+        # Helper: try one symbol with cache->fresh and return (price, source) or (None, reason)
+        async def _try_symbol(symbol: str) -> tuple[Decimal | None, str]:
+            try:
+                # 1) Try cached via service (non-stale)
+                cached = self.price_service.get_cached_prices([symbol]).get(symbol)
+                if cached and cached.get("price") is not None:
+                    return Decimal(str(cached["price"])), "cached"
 
-        try:
-            # Try cached first, then fresh if needed
-            price = await self.price_service.get_price(pair, force_refresh=False)
-            if price:
-                return price, "cached"
+                # 2) Try fresh fetch (service решит: mid/last, mainnet/testnet)
+                fresh = await self.price_service.get_price(symbol, force_refresh=True)
+                if fresh is not None:
+                    return fresh, "fresh"
 
-            # If cache miss, try fresh fetch
-            price = await self.price_service.get_price(pair, force_refresh=True)
-            if price:
-                return price, "fresh"
+                return None, "unavailable"
+            except Exception as e:  # noqa: BLE001
+                logger.error(f"Error fetching price for {symbol}: {e}")
+                return None, "error"
 
-            logger.warning(f"No price available for {pair}")
-            return None, "unavailable"
+        # Primary quotes to try
+        quotes_order = [quote.upper(), "USD", "USDC", "BUSD"]
 
-        except Exception as e:
-            logger.error(f"Error fetching price for {pair}: {e}")
-            return None, "error"
+        # 1) Try direct pairs: ASSET+QUOTE, ASSET+USD/USDC/BUSD
+        for q in quotes_order:
+            pair = f"{asset}{q}"
+            price, src = await _try_symbol(pair)
+            if price is not None:
+                return price, src
+
+        # 2) Try reversed pairs and invert price: QUOTE+ASSET
+        for q in quotes_order:
+            pair_rev = f"{q}{asset}"
+            price, src = await _try_symbol(pair_rev)
+            if price is not None and price != 0:
+                try:
+                    inverted = (Decimal("1") / price).quantize(Decimal("0.00000001"))
+                except Exception:
+                    inverted = Decimal("0")
+                if inverted > 0:
+                    return inverted, src
+
+        logger.warning(f"No price available for {asset} in quotes {quotes_order}")
+        return None, "unavailable"
 
     async def calculate_portfolio_summary(
         self, exchange_account: ExchangeAccount, force_refresh_prices: bool = False
@@ -136,11 +296,24 @@ class PortfolioService:
         try:
             logger.info(f"Calculating portfolio for account: {exchange_account.name}")
 
+            # Check circuit breaker before attempting call
+            if not self.circuit_breaker.should_attempt_call(exchange_account):
+                exchange_key = self.circuit_breaker._get_exchange_key(exchange_account)
+                status = self.circuit_breaker.get_circuit_status(exchange_account)
+                logger.info(
+                    f"Circuit breaker OPEN for {exchange_key}, skipping live calculation. "
+                    f"Retry in {status['time_until_retry_seconds']}s"
+                )
+                return None
+
             # Get balances from exchange
             adapter = exchange_account.get_adapter()
             raw_balances_dict = await adapter.get_balances(
                 exchange_account.account_type
             )
+
+            # Record successful call
+            self.circuit_breaker.record_success(exchange_account)
 
             if not raw_balances_dict:
                 logger.warning(f"No balances found for account {exchange_account.name}")
@@ -152,11 +325,239 @@ class PortfolioService:
                 for symbol, balance in raw_balances_dict.items()
             ]
 
-            # Filter out dust balances and prepare asset list
+            # Whitelist of supported crypto assets (Top ~200 from CoinMarketCap)
+            ALLOWED_ASSETS = {
+                # Top 10 Major cryptocurrencies
+                "BTC",
+                "ETH",
+                "USDT",
+                "BNB",
+                "SOL",
+                "XRP",
+                "USDC",
+                "ADA",
+                "DOGE",
+                "AVAX",
+                # Top 11-50
+                "TON",
+                "LINK",
+                "DOT",
+                "MATIC",
+                "TRX",
+                "ICP",
+                "SHIB",
+                "UNI",
+                "LTC",
+                "BCH",
+                "NEAR",
+                "APT",
+                "LEO",
+                "DAI",
+                "ATOM",
+                "XMR",
+                "ETC",
+                "VET",
+                "FIL",
+                "HBAR",
+                "TAO",
+                "ARB",
+                "IMX",
+                "OP",
+                "MKR",
+                "INJ",
+                "AAVE",
+                "GRT",
+                "THETA",
+                "LDO",
+                "RUNE",
+                "STX",
+                "FTM",
+                "ALGO",
+                "XTZ",
+                "EGLD",
+                "FLOW",
+                "SAND",
+                "MANA",
+                "APE",
+                "CRV",
+                # Top 51-100
+                "SNX",
+                "CAKE",
+                "SUSHI",
+                "COMP",
+                "YFI",
+                "BAL",
+                "1INCH",
+                "ENJ",
+                "GALA",
+                "CHZ",
+                "ZIL",
+                "MINA",
+                "KAVA",
+                "ONE",
+                "ROSE",
+                "CELO",
+                "ANKR",
+                "REN",
+                "OCEAN",
+                "NMR",
+                "FET",
+                "KSM",
+                "WAVES",
+                "ICX",
+                "ZEC",
+                "DASH",
+                "DCR",
+                "QTUM",
+                "BAT",
+                "SC",
+                "STORJ",
+                "REP",
+                "KNC",
+                "LRC",
+                "BNT",
+                "MLN",
+                "GNO",
+                "RLC",
+                "MAID",
+                "ANT",
+                # Top 101-150
+                "HOT",
+                "DENT",
+                "WIN",
+                "BTT",
+                "TWT",
+                "SFP",
+                "DYDX",
+                "GMX",
+                "PERP",
+                "LOOKS",
+                "BLUR",
+                "MAGIC",
+                "RDNT",
+                "JOE",
+                "PYR",
+                "GOVI",
+                "SPELL",
+                "TRIBE",
+                "BADGER",
+                "RARI",
+                "MASK",
+                "ALPHA",
+                "BETA",
+                "FARM",
+                "CREAM",
+                "HEGIC",
+                "PICKLE",
+                "COVER",
+                "VALUE",
+                "ARMOR",
+                "SAFE",
+                "DPI",
+                "INDEX",
+                "FLI",
+                "MVI",
+                "BED",
+                "DATA",
+                "GMI",
+                # Layer 2 & Scaling
+                "METIS",
+                "BOBA",
+                "STRK",
+                # Exchange Tokens
+                "FTT",
+                "CRO",
+                "HT",
+                "OKB",
+                "KCS",
+                "GT",
+                # Stablecoins
+                "BUSD",
+                "TUSD",
+                "USDD",
+                "FRAX",
+                "MIM",
+                "LUSD",
+                "USDP",
+                "GUSD",
+                "HUSD",
+                "RSV",
+                "NUSD",
+                "DUSD",
+                "ALUSD",
+                "OUSD",
+                "USDX",
+                "CUSD",
+                "EURS",
+                # DeFi Protocols
+                # Gaming & NFT
+                "AXS",
+                "SLP",
+                "ILV",
+                "ALICE",
+                "TLM",
+                "NFTX",
+                "TREASURE",
+                "PRIME",
+                "GHST",
+                # Oracle & Infrastructure
+                "BAND",
+                "TRB",
+                "API3",
+                "DIA",
+                "UMA",
+                "NEST",
+                "FLUX",
+                "PYTH",
+                # Meme Coins
+                "FLOKI",
+                "PEPE",
+                "BONK",
+                "WIF",
+                "DEGEN",
+                "BOME",
+                "MEME",
+                # New & Trending (2023-2024)
+                "SUI",
+                "SEI",
+                "TIA",
+                "JTO",
+                "WLD",
+                "JUP",
+                "ONDO",
+                "MANTA",
+                "ALT",
+                "AEVO",
+                "PIXEL",
+                "PORTAL",
+                "AXL",
+                # Additional Popular Tokens
+                "HOOK",
+                "POLYX",
+                "LEVER",
+                "HFT",
+                "DUSK",
+                "HIGH",
+                "CVX",
+                "FXS",
+                "OHM",
+                "ICE",
+                "BICO",
+                "POLS",
+                "DF",
+                "TVK",
+                "SUPER",
+                "GODS",
+                "DPET",
+                "WILD",
+            }
+
+            # Filter out dust balances and use whitelist (safer than blacklist)
             significant_balances = [
                 balance
                 for balance in raw_balances
                 if balance.balance > self.MIN_BALANCE_THRESHOLD
+                and balance.symbol.upper() in ALLOWED_ASSETS
             ]
 
             if not significant_balances:
@@ -175,18 +576,63 @@ class PortfolioService:
             portfolio_assets = []
             total_value = Decimal("0.00")
 
+            # Batch price lookup for performance
+            primary_pairs: list[str] = []
+            asset_by_pair: dict[str, Balance] = {}
+
+            for balance in significant_balances:
+                asset_symbol = balance.symbol.upper()
+                if asset_symbol in {"USDT", "USDC", "BUSD", "DAI", "TUSD"}:
+                    continue  # stablecoins handle later per-asset
+                pair = self._get_trading_pair(asset_symbol, "USDT")
+                primary_pairs.append(pair)
+                asset_by_pair[pair] = balance
+
+            # 1) Try cached batch
+            cached_prices = (
+                await self.price_service.get_prices_batch(
+                    primary_pairs, force_refresh=False
+                )
+                if primary_pairs
+                else {}
+            )
+            # 2) For missing -> fresh batch
+            missing_pairs = [p for p, v in (cached_prices or {}).items() if v is None]
+            if missing_pairs:
+                fresh_prices = await self.price_service.get_prices_batch(
+                    missing_pairs, force_refresh=True
+                )
+                # merge
+                for p, v in (fresh_prices or {}).items():
+                    cached_prices[p] = v
+
+            # Now build assets using batch results
             for balance in significant_balances:
                 asset_symbol = balance.symbol.upper()
                 asset_balance = balance.balance
 
-                # Get USD price
-                price_usd, price_source = await self._get_asset_price(asset_symbol)
+                price_usd: Decimal | None
+                price_source: str
+
+                if asset_symbol in {"USDT", "USDC", "BUSD", "DAI", "TUSD"}:
+                    price_usd = Decimal("1.00")
+                    price_source = "stablecoin"
+                else:
+                    pair = self._get_trading_pair(asset_symbol, "USDT")
+                    cached_price: Decimal | None = (cached_prices or {}).get(pair)
+                    if isinstance(cached_price, Decimal):
+                        price_usd = cached_price
+                        price_source = "cached"  # or "fresh" — batch API does not expose; default to cached
+                    else:
+                        # Slow path fallback per-asset (includes alternative quotes and inversion)
+                        price_usd, price_source = await self._get_asset_price(
+                            asset_symbol
+                        )
 
                 if price_usd is None:
                     logger.warning(f"Skipping {asset_symbol} - no price available")
                     continue
 
-                # Calculate USD value
                 value_usd = self._round_decimal(
                     asset_balance * price_usd, self.ROUNDING_PRECISION
                 )
@@ -197,7 +643,7 @@ class PortfolioService:
                         balance=asset_balance,
                         price_usd=price_usd,
                         value_usd=value_usd,
-                        percentage=Decimal("0"),  # Will calculate after we have total
+                        percentage=Decimal("0"),
                         price_source=price_source,
                     )
                 )
@@ -242,6 +688,10 @@ class PortfolioService:
 
         except Exception as e:
             logger.error(f"Portfolio calculation failed: {e}", exc_info=True)
+
+            # Record failure in circuit breaker
+            self.circuit_breaker.record_failure(exchange_account, e)
+
             return None
 
     async def get_portfolio_assets_only(
@@ -302,6 +752,23 @@ class PortfolioService:
                 issues.append(f"Negative percentage for {asset.symbol}")
 
         return issues
+
+    def get_exchange_status(self, exchange_account: ExchangeAccount) -> dict:
+        """
+        Get exchange health status and circuit breaker information.
+
+        Returns:
+            Dict with exchange status, circuit breaker state, and timing info
+        """
+        circuit_status = self.circuit_breaker.get_circuit_status(exchange_account)
+
+        return {
+            "exchange": exchange_account.exchange,
+            "account_type": exchange_account.account_type,
+            "testnet": exchange_account.testnet,
+            "is_available": not circuit_status["is_open"],
+            "circuit_breaker": circuit_status,
+        }
 
 
 # Singleton instance

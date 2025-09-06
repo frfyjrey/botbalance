@@ -103,7 +103,7 @@ class PriceService:
         try:
             adapter = self.adapter_factory.create_adapter(
                 exchange="binance",
-                api_key="",  # Mock for Step 2
+                api_key="",  # Public price endpoints don't require signing
                 api_secret="",
             )
 

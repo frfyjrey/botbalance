@@ -143,23 +143,34 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # BOTBALANCE SETTINGS
 # =============================================================================
 
-# Exchange environment: mock | testnet | mainnet
+# Exchange environment: mock | live (simplified from 4 to 2 options)
 EXCHANGE_ENV = os.getenv("EXCHANGE_ENV", "mock").lower()
+
+# Smoke tests for development (disabled by default, enabled only locally)
+ENABLE_SMOKE_TESTS = os.getenv("ENABLE_SMOKE_TESTS", "false").lower() == "true"
 
 # Pricing service configuration
 PRICING_SOURCE = os.getenv("PRICING_SOURCE", "mid").lower()  # mid | last
 PRICING_USE_CACHE = os.getenv("PRICING_USE_CACHE", "true").lower() == "true"
 PRICING_TTL_SECONDS = int(os.getenv("PRICING_TTL_SECONDS", "300"))
+PRICING_BYPASS_TESTNET_ALLOWLIST = (
+    os.getenv("PRICING_BYPASS_TESTNET_ALLOWLIST", "true").lower() == "true"
+)
 
-# Optional system testnet account (only used when EXCHANGE_ENV=testnet and enabled)
+# Optional system testnet account (only used when EXCHANGE_ENV=live and enabled)
 ENABLE_SYSTEM_TESTNET_ACCOUNT = (
     os.getenv("ENABLE_SYSTEM_TESTNET_ACCOUNT", "false").lower() == "true"
 )
 BINANCE_SPOT_TESTNET_API_KEY = os.getenv("BINANCE_SPOT_TESTNET_API_KEY", "")
 BINANCE_SPOT_TESTNET_API_SECRET = os.getenv("BINANCE_SPOT_TESTNET_API_SECRET", "")
 
-# Use live exchange HTTP calls (disabled by default; unit tests rely on mocks)
-USE_LIVE_EXCHANGE = os.getenv("USE_LIVE_EXCHANGE", "false").lower() == "true"
+# Order polling (Step 5): disabled by default; enable together with EXCHANGE_ENV=live
+ENABLE_ORDER_POLLING = os.getenv("ENABLE_ORDER_POLLING", "false").lower() == "true"
+
+# Binance testnet active symbols allowlist (CSV)
+BINANCE_TESTNET_ACTIVE_SYMBOLS = os.getenv(
+    "BINANCE_TESTNET_ACTIVE_SYMBOLS", "BTCUSDT,ETHUSDT,BNBUSDT"
+)
 
 # =============================================================================
 # DJANGO REST FRAMEWORK

@@ -138,6 +138,11 @@ class PortfolioServiceTest(TestCase):
     async def test_calculate_portfolio_price_unavailable(self):
         """Test portfolio calculation when prices are unavailable."""
 
+        # Clear price cache first to ensure mock is used
+        from botbalance.exchanges.price_service import price_service
+
+        price_service.clear_price_cache(["BTCUSDT"])
+
         mock_adapter = AsyncMock()
         # Return balance for BTC only - dict format
         mock_adapter.get_balances.return_value = {"BTC": Decimal("0.5")}
@@ -146,9 +151,18 @@ class PortfolioServiceTest(TestCase):
         async def mock_get_asset_price_none(asset, quote="USDT"):
             return None, "unavailable"
 
+        # Mock price_service.get_prices_batch to return None prices
+        async def mock_get_prices_batch_none(symbols, force_refresh=False):
+            return dict.fromkeys(symbols)
+
         with (
             patch.object(
                 self.portfolio_service, "_get_asset_price", mock_get_asset_price_none
+            ),
+            patch.object(
+                self.portfolio_service.price_service,
+                "get_prices_batch",
+                mock_get_prices_batch_none,
             ),
             patch.object(
                 self.exchange_account, "get_adapter", return_value=mock_adapter
@@ -366,7 +380,7 @@ class PortfolioAPITest(TestCase):
         url = reverse("api:me:portfolio_summary")
         response = self.client.get(url)
 
-        self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
 
         data = response.json()
         self.assertEqual(data["status"], "error")

@@ -31,10 +31,16 @@ export const useBalances = (
       if (error && 'status' in error && error.status === 404) {
         return false;
       }
+      // Don't retry on 503 (Service Unavailable) - fallback already used
+      if (error && 'status' in error && error.status === 503) {
+        return false;
+      }
       return failureCount < 3;
     },
-    staleTime: 1000 * 60 * 2, // Consider data fresh for 2 minutes
-    refetchInterval: 1000 * 30, // Refetch every 30 seconds when component is focused
+    staleTime: 1000 * 60 * 5, // Consider data fresh for 5 minutes (reduced frequency)
+    refetchInterval: false, // Disable automatic polling (was causing excessive requests)
+    refetchOnMount: false, // Don't refetch on component mount
+    refetchOnWindowFocus: false, // Don't refetch when user focuses window
     ...options,
   });
 };

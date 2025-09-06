@@ -63,6 +63,13 @@ class ExchangeAccount(models.Model):
         help_text="Exchange API secret (stored as plaintext in MVP, encrypted in Step 8)",
     )
 
+    passphrase = models.CharField(
+        max_length=200,
+        blank=True,
+        null=True,
+        help_text="Exchange API passphrase (required for OKX, optional for others)",
+    )
+
     # Configuration
     testnet = models.BooleanField(
         default=False, help_text="Use testnet/sandbox environment"
@@ -123,6 +130,12 @@ class ExchangeAccount(models.Model):
                 }
             )
 
+        # Validate passphrase requirement for OKX
+        if self.exchange == "okx" and not self.passphrase:
+            raise ValidationError(
+                {"passphrase": "Passphrase is required for OKX exchange"}
+            )
+
     def save(self, *args, **kwargs):
         """Override save to run validation."""
         self.full_clean()
@@ -142,6 +155,7 @@ class ExchangeAccount(models.Model):
             api_key=self.api_key,
             api_secret=self.api_secret,
             testnet=self.testnet,
+            passphrase=self.passphrase,
         )
 
     def test_connection(self) -> bool:

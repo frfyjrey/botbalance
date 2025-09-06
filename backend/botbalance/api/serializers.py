@@ -99,7 +99,12 @@ class ExchangeAccountSerializer(serializers.ModelSerializer):
     """
 
     # Hide sensitive data in responses
-    api_secret = serializers.CharField(write_only=True)
+    api_secret = serializers.CharField(
+        write_only=True, required=False, allow_blank=True
+    )
+    passphrase = serializers.CharField(
+        write_only=True, required=False, allow_blank=True
+    )
 
     # Read-only fields
     last_tested_at = serializers.DateTimeField(read_only=True)
@@ -117,6 +122,7 @@ class ExchangeAccountSerializer(serializers.ModelSerializer):
             "name",
             "api_key",
             "api_secret",
+            "passphrase",
             "testnet",
             "is_active",
             "created_at",
@@ -124,6 +130,70 @@ class ExchangeAccountSerializer(serializers.ModelSerializer):
             "last_tested_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at", "last_tested_at"]
+
+    def validate_api_secret(self, value):
+        """
+        Custom validation for api_secret field.
+
+        For updates: empty string means "don't update", so we return None
+        For creation: empty string is not allowed
+        """
+        # If updating (instance exists) and api_secret is empty, don't update it
+        if self.instance and (value == "" or value is None):
+            return None
+
+        # For creation, empty api_secret is not allowed
+        if not self.instance and (not value or value == ""):
+            raise serializers.ValidationError("API secret is required for new accounts")
+
+        return value
+
+    def validate_passphrase(self, value):
+        """
+        Custom validation for passphrase field.
+
+        For updates: empty string means "don't update", so we return None
+        For creation: empty string is allowed (not all exchanges require it)
+        """
+        # If updating (instance exists) and passphrase is empty, don't update it
+        if self.instance and (value == "" or value is None):
+            return None
+
+        return value
+
+    def validate(self, attrs):
+        """
+        Cross-field validation.
+        """
+        attrs = super().validate(attrs)
+
+        # For creation, validate passphrase requirement
+        if not self.instance:  # Creating new account
+            exchange = attrs.get("exchange")
+            passphrase = attrs.get("passphrase")
+
+            if exchange == "okx" and not passphrase:
+                raise serializers.ValidationError(
+                    {"passphrase": "Passphrase is required for OKX exchange"}
+                )
+
+        return attrs
+
+    def update(self, instance, validated_data):
+        """
+        Custom update method to handle api_secret and passphrase properly.
+        """
+        # Remove api_secret from validated_data if it's None (means don't update)
+        api_secret = validated_data.get("api_secret")
+        if api_secret is None:
+            validated_data.pop("api_secret", None)
+
+        # Remove passphrase from validated_data if it's None (means don't update)
+        passphrase = validated_data.get("passphrase")
+        if passphrase is None:
+            validated_data.pop("passphrase", None)
+
+        return super().update(instance, validated_data)
 
 
 class BalanceSerializer(serializers.Serializer):
@@ -176,10 +246,10 @@ class PortfolioAssetSerializer(serializers.Serializer):
         max_digits=20, decimal_places=8, help_text="Asset balance amount"
     )
     price_usd = serializers.DecimalField(
-        max_digits=20,
-        decimal_places=8,
+        max_digits=30,
+        decimal_places=18,
         allow_null=True,
-        help_text="Current USD price per unit",
+        help_text="Current USD price per unit (supports micro-caps with many decimal places)",
     )
     value_usd = serializers.DecimalField(
         max_digits=20, decimal_places=2, help_text="Total USD value of this asset"
@@ -226,6 +296,40 @@ class PortfolioSummarySerializer(serializers.Serializer):
     )
 
 
+class ExchangeAccountInfoSerializer(serializers.Serializer):
+    """Serializer for exchange account basic info."""
+
+    id = serializers.IntegerField(help_text="Exchange account ID")
+    name = serializers.CharField(max_length=100, help_text="Account name")
+    exchange = serializers.CharField(max_length=20, help_text="Exchange name")
+    account_type = serializers.CharField(max_length=20, help_text="Account type")
+    testnet = serializers.BooleanField(help_text="Is testnet account")
+    is_active = serializers.BooleanField(help_text="Is account active")
+
+
+class ExchangeStatusSerializer(serializers.Serializer):
+    """Serializer for exchange status and circuit breaker info."""
+
+    is_available = serializers.BooleanField(help_text="Is exchange available")
+    using_fallback_data = serializers.BooleanField(
+        help_text="Using fallback snapshot data"
+    )
+    fallback_age_minutes = serializers.IntegerField(
+        required=False, allow_null=True, help_text="Age of fallback data in minutes"
+    )
+    last_successful_fetch = serializers.CharField(
+        required=False,
+        allow_null=True,
+        help_text="Last successful data fetch timestamp",
+    )
+    next_retry_in_seconds = serializers.IntegerField(
+        required=False, allow_null=True, help_text="Seconds until next retry"
+    )
+    circuit_breaker_status = serializers.JSONField(
+        required=False, allow_null=True, help_text="Circuit breaker detailed status"
+    )
+
+
 class PortfolioSummaryResponseSerializer(serializers.Serializer):
     """Serializer for portfolio summary API response."""
 
@@ -234,6 +338,12 @@ class PortfolioSummaryResponseSerializer(serializers.Serializer):
     )
     portfolio = PortfolioSummarySerializer(
         required=False, help_text="Portfolio summary data"
+    )
+    exchange_account = ExchangeAccountInfoSerializer(
+        required=False, help_text="Exchange account information"
+    )
+    exchange_status = ExchangeStatusSerializer(
+        required=False, help_text="Exchange availability and circuit breaker status"
     )
     message = serializers.CharField(
         required=False, help_text="Response message (for errors)"

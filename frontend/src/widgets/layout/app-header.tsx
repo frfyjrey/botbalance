@@ -149,6 +149,26 @@ export const AppHeader: React.FC = () => {
               >
                 Strategy
               </Button>
+              <Button
+                onClick={() => navigate(ROUTES.ORDERS)}
+                className={`btn-github text-xs sm:text-sm px-2 sm:px-3 py-1 sm:py-1.5 ${
+                  isCurrentRoute(ROUTES.ORDERS)
+                    ? 'btn-github-secondary'
+                    : 'btn-github-invisible'
+                }`}
+              >
+                Orders
+              </Button>
+              <Button
+                onClick={() => navigate(ROUTES.EXCHANGES)}
+                className={`btn-github text-xs sm:text-sm px-2 sm:px-3 py-1 sm:py-1.5 ${
+                  isCurrentRoute(ROUTES.EXCHANGES)
+                    ? 'btn-github-secondary'
+                    : 'btn-github-invisible'
+                }`}
+              >
+                Exchanges
+              </Button>
             </nav>
           </div>
 

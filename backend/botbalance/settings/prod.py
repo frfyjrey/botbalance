@@ -281,3 +281,33 @@ SESSION_ENGINE = "django.contrib.sessions.backends.cache"
 SESSION_CACHE_ALIAS = "default"
 
 # Template caching already configured above in TEMPLATES definition
+
+# =============================================================================
+# ОБРАБОТКА СБОЕВ ВНЕШНЕГО API: используем testnet для тестирования resilience
+# =============================================================================
+# Безопасные fallback настройки (переопределяются через переменные окружения на продакшене)
+EXCHANGE_ENV = "mock"  # Fallback на mock (безопасно)
+
+# =============================================================================
+# JWT SETTINGS FOR PRODUCTION (secure session timing)
+# =============================================================================
+
+from datetime import timedelta
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(hours=2),  # 2 часа для production
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),  # 7 дней для production
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "UPDATE_LAST_LOGIN": True,
+    "ALGORITHM": "HS256",
+    "SIGNING_KEY": SECRET_KEY,
+}
+
+# =============================================================================
+# SESSION SETTINGS FOR PRODUCTION
+# =============================================================================
+
+SESSION_COOKIE_AGE = 7200  # 2 часа в секундах
+SESSION_SAVE_EVERY_REQUEST = True  # Обновлять сессию при каждом запросе
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False  # Не истекать при закрытии браузера

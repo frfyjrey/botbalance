@@ -1,4 +1,5 @@
 import React from 'react';
+import { Button } from '@shared/ui/Button';
 import { formatCurrencyUSD, formatNumberEnUS } from '@shared/lib/utils';
 import { useTranslation } from 'react-i18next';
 
@@ -121,6 +122,7 @@ export const AssetsList: React.FC<AssetsListProps> = ({
 }) => {
   const { t } = useTranslation('dashboard');
   const { data: response, isLoading, error } = usePortfolioSummary();
+  const [showAll, setShowAll] = React.useState(false);
 
   if (isLoading) {
     return (
@@ -190,8 +192,9 @@ export const AssetsList: React.FC<AssetsListProps> = ({
     );
   }
 
-  const assets = response.portfolio.assets.slice(0, maxItems);
-  const totalAssets = response.portfolio.assets.length;
+  const allAssets = response.portfolio.assets;
+  const totalAssets = allAssets.length;
+  const assets = showAll ? allAssets : allAssets.slice(0, maxItems);
 
   if (assets.length === 0) {
     return (
@@ -244,12 +247,35 @@ export const AssetsList: React.FC<AssetsListProps> = ({
             {t('portfolio.assets_title', 'Portfolio Assets')}
           </h3>
           {totalAssets > maxItems && (
-            <span className="text-xs" style={{ color: 'rgb(var(--fg-muted))' }}>
-              {t('portfolio.showing_assets', 'Showing {{shown}} of {{total}}', {
-                shown: maxItems,
-                total: totalAssets,
-              })}
-            </span>
+            <div className="flex items-center gap-3">
+              <span
+                className="text-xs"
+                style={{ color: 'rgb(var(--fg-muted))' }}
+              >
+                {showAll
+                  ? t('portfolio.showing_all', 'Showing all {{total}}', {
+                      total: totalAssets,
+                    })
+                  : t(
+                      'portfolio.showing_assets',
+                      'Showing {{shown}} of {{total}}',
+                      {
+                        shown: maxItems,
+                        total: totalAssets,
+                      },
+                    )}
+              </span>
+              <Button
+                variant="link"
+                size="sm"
+                onClick={() => setShowAll(prev => !prev)}
+                className="px-0"
+              >
+                {showAll
+                  ? t('portfolio.show_less', 'Show less')
+                  : t('portfolio.show_all', 'Show all')}
+              </Button>
+            </div>
           )}
         </div>
       </div>
