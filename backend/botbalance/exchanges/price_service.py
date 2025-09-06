@@ -165,6 +165,62 @@ class PriceService:
 
         return results
 
+    async def get_prices_batch_with_adapter(
+        self, adapter, symbols: list[str]
+    ) -> dict[str, Decimal | None]:
+        """
+        Get prices for multiple symbols using specific exchange adapter.
+
+        This is the new interface for PortfolioState architecture.
+        If adapter has native batch support, use it. Otherwise, fall back to
+        safe sequential calls with backoff.
+
+        Args:
+            adapter: Exchange adapter instance
+            symbols: List of trading pair symbols
+
+        Returns:
+            Dictionary mapping symbols to prices
+        """
+        symbols = [s.upper() for s in symbols]
+        results: dict[str, Decimal | None] = {}
+
+        # Check if adapter has native batch pricing support
+        if hasattr(adapter, "get_prices_batch"):
+            try:
+                logger.debug(f"Using native batch pricing from {adapter.exchange()}")
+                return await adapter.get_prices_batch(symbols)
+            except Exception as e:
+                logger.warning(
+                    f"Native batch pricing failed for {adapter.exchange()}: {e}"
+                )
+                # Fall through to sequential approach
+
+        # Fallback: safe sequential calls with rate limiting
+        logger.debug(
+            f"Using sequential pricing for {adapter.exchange()}, {len(symbols)} symbols"
+        )
+
+        for i, symbol in enumerate(symbols):
+            try:
+                price = await adapter.get_price(symbol)
+                results[symbol] = price
+
+                # Rate limiting: small delay between calls to be respectful
+                if i < len(symbols) - 1:  # Don't sleep after last symbol
+                    await asyncio.sleep(0.05)  # 50ms between calls
+
+            except Exception as e:
+                logger.warning(
+                    f"Failed to get price for {symbol} from {adapter.exchange()}: {e}"
+                )
+                results[symbol] = None
+
+        logger.info(
+            f"Fetched {len([p for p in results.values() if p])}/{len(symbols)} prices from {adapter.exchange()}"
+        )
+        return results
+
     def get_cached_prices(self, symbols: list[str]) -> dict[str, dict | None]:
         """
         Get cached price data for symbols (synchronous).

@@ -157,6 +157,9 @@ PRICING_BYPASS_TESTNET_ALLOWLIST = (
     os.getenv("PRICING_BYPASS_TESTNET_ALLOWLIST", "true").lower() == "true"
 )
 
+# Portfolio state configuration
+PORTFOLIO_STATE_COOLDOWN_SEC = int(os.getenv("PORTFOLIO_STATE_COOLDOWN_SEC", "5"))
+
 # Optional system testnet account (only used when EXCHANGE_ENV=live and enabled)
 ENABLE_SYSTEM_TESTNET_ACCOUNT = (
     os.getenv("ENABLE_SYSTEM_TESTNET_ACCOUNT", "false").lower() == "true"

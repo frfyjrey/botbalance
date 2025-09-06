@@ -74,8 +74,13 @@ class PortfolioServiceTest(TestCase):
                 self.exchange_account
             )
 
-        # Service returns None when no balances found (see line 138 in portfolio_service.py)
-        self.assertIsNone(summary)
+        # During migration: service returns empty portfolio with fallback flag when no balances/strategy found
+        self.assertIsNotNone(summary)
+        assert summary is not None  # Type hint for mypy
+        self.assertEqual(summary.total_nav, Decimal("0.00"))
+        self.assertEqual(len(summary.assets), 0)
+        self.assertEqual(summary.quote_currency, "USDT")
+        self.assertTrue(summary.price_cache_stats.get("fallback", False))
 
     async def test_calculate_portfolio_price_unavailable(self):
         """Test portfolio calculation when prices are unavailable."""
