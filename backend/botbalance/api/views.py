@@ -1738,7 +1738,7 @@ def test_exchange_account_view(request, account_id):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
-def check_exchange_account_view(request, account_id):
+async def check_exchange_account_view(request, account_id):
     """
     Perform lightweight health check on exchange account.
 
@@ -1749,7 +1749,6 @@ def check_exchange_account_view(request, account_id):
     Updates health fields and returns status with latency metrics.
     Does not calculate portfolio state or prices.
     """
-    import asyncio
     import time
 
     from django.utils import timezone
@@ -1858,7 +1857,7 @@ def check_exchange_account_view(request, account_id):
             }
 
     try:
-        result = asyncio.run(perform_health_check())
+        result = await perform_health_check()
 
         return Response(
             {
