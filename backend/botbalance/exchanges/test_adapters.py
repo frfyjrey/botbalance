@@ -167,8 +167,9 @@ class TestOKXAdapter:
                 )
             )
 
-        # get_open_orders not implemented
-        with pytest.raises(FeatureNotEnabledError):
+        # get_open_orders is now implemented (for health checking)
+        # Will fail with API credentials error in tests, but that's expected
+        with pytest.raises((FeatureNotEnabledError, ExchangeAPIError)):
             asyncio.run(self.adapter.get_open_orders())
 
         # get_order_status not implemented

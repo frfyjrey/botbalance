@@ -148,8 +148,53 @@ class OKXAdapter(ExchangeAdapter):
     async def get_open_orders(
         self, *, account: str | None = None, symbol: str | None = None
     ) -> list[Order]:
-        """Get open orders - mock implementation for now."""
-        raise FeatureNotEnabledError("OKX order management not yet implemented")
+        """
+        Get open orders for OKX account.
+
+        Simple implementation for health checking - makes authenticated request
+        to verify API credentials work correctly.
+        """
+        # For health check purposes, just make a simple authenticated request
+        # OKX API: GET /api/v5/trade/orders-pending
+        try:
+            params = {
+                "instType": "SPOT"  # Only spot trading for now
+            }
+
+            data = await self._signed_request(
+                "GET", "/api/v5/trade/orders-pending", params=params
+            )
+
+            # Convert response to Order objects (simplified)
+            orders: list[Order] = []
+            if data and "data" in data:
+                for o in data["data"]:
+                    # Calculate quote amount from size and price
+                    size = Decimal(o.get("sz", "0"))
+                    price = Decimal(o.get("px", "0"))
+                    quote_amount = size * price
+                    filled_size = Decimal(o.get("fillSz", "0"))
+
+                    orders.append(
+                        Order(
+                            id=o.get("ordId", ""),
+                            symbol=o.get("instId", ""),
+                            client_order_id=o.get("clOrdId"),
+                            side=o.get("side", "").lower(),
+                            status=o.get("state", "unknown"),
+                            limit_price=price,
+                            quote_amount=quote_amount,
+                            filled_amount=filled_size * price,
+                            created_at=o.get("cTime", ""),
+                            updated_at=o.get("uTime"),
+                        )
+                    )
+
+            return orders
+
+        except Exception as e:
+            logger.error(f"OKX get_open_orders failed: {e}")
+            raise ExchangeAPIError(f"Failed to get open orders: {str(e)}")
 
     async def get_order_status(
         self,

@@ -12,7 +12,7 @@ import time
 from decimal import Decimal
 
 import pytest
-import requests as r  # type: ignore
+import requests as r
 from django.contrib.auth.models import User
 
 pytestmark = pytest.mark.skipif(
