@@ -113,26 +113,29 @@ export const useRefreshPortfolioState = (
 };
 
 /**
- * Unified hook that tries PortfolioState first, falls back to legacy PortfolioSummary
+ * Primary hook that uses ONLY PortfolioState API (no fallback)
  *
- * This provides backward compatibility during migration period.
- * Always returns data in PortfolioSummaryResponse format regardless of source.
+ * Returns 404 ERROR_NO_STATE if state doesn't exist - dashboard should show empty state.
+ * User must explicitly call refresh to create initial state.
+ * Converts PortfolioState to PortfolioSummary format for component compatibility.
  */
 export const usePortfolioData = (
   params?: { connector_id?: number },
   options?: Partial<UseQueryOptions<PortfolioSummaryResponse, Error>>,
 ): UseQueryResult<PortfolioSummaryResponse, Error> => {
   const stateQuery = usePortfolioState(params, {
-    enabled: true, // Always try State first
-    retry: false, // Don't retry State failures, fallback immediately
-  });
-
-  const summaryQuery = usePortfolioSummary({
-    enabled: !!stateQuery.error, // Only use legacy if State failed
+    enabled: true, // Always try State
+    retry: (failureCount, error) => {
+      // Don't retry on 404 ERROR_NO_STATE - this is expected when no state exists
+      if (error && 'status' in error && error.status === 404) {
+        return false;
+      }
+      return failureCount < 2;
+    },
     ...options,
   });
 
-  // If State is successful, convert and return in PortfolioSummaryResponse format
+  // If State is successful, convert and return
   if (stateQuery.data?.state && stateQuery.data.status === 'success') {
     const portfolioSummary = portfolioStateToSummary(stateQuery.data.state);
 
@@ -141,33 +144,17 @@ export const usePortfolioData = (
       data: {
         status: 'success',
         portfolio: portfolioSummary,
-        message: `✨ Using new PortfolioState API (faster)`,
+        message: `✨ Using PortfolioState API`,
       } as PortfolioSummaryResponse,
     } as UseQueryResult<PortfolioSummaryResponse, Error>;
   }
 
-  // If State failed but legacy is successful
-  if (summaryQuery.data?.status === 'success') {
-    return {
-      ...summaryQuery,
-      data: {
-        ...summaryQuery.data,
-        message: summaryQuery.data.message
-          ? `${summaryQuery.data.message} (legacy endpoint)`
-          : '⚠️ Using legacy portfolio endpoint',
-      },
-    } as UseQueryResult<PortfolioSummaryResponse, Error>;
-  }
-
-  // Return loading/error states - prioritize the active query
-  const activeQuery = stateQuery.error ? summaryQuery : stateQuery;
-
-  // Convert to PortfolioSummaryResponse format for consistency
+  // Return loading/error states (including 404 ERROR_NO_STATE)
   return {
-    ...activeQuery,
-    data: undefined, // No successful data yet
-    error: activeQuery.error,
-    isLoading: activeQuery.isLoading,
-    isError: activeQuery.isError,
+    ...stateQuery,
+    data: undefined, // No data when state doesn't exist
+    error: stateQuery.error,
+    isLoading: stateQuery.isLoading,
+    isError: stateQuery.isError,
   } as UseQueryResult<PortfolioSummaryResponse, Error>;
 };
