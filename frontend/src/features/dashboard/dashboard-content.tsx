@@ -3,15 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@shared/ui/Button';
 import { useUserProfile } from '@entities/user';
 import { AppHeader } from '@widgets/layout';
-import { BalancesCard } from '@features/balance';
 import {
-  PortfolioSummaryCard,
   AssetAllocationChart,
   PortfolioAssetsCard,
   PortfolioSnapshots,
 } from '@features/portfolio';
 import { ExchangeStatusIndicator } from '@features/dashboard';
-import { AssetsList } from '@features/portfolio/assets-list';
 
 export const DashboardContent = () => {
   const { t } = useTranslation('dashboard');
@@ -42,19 +39,10 @@ export const DashboardContent = () => {
           {/* Exchange Status - Circuit Breaker Info */}
           <ExchangeStatusIndicator />
 
-          {/* Portfolio Overview - Step 2 Complete */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-            <PortfolioSummaryCard />
-            <BalancesCard />
-          </div>
-
           {/* Portfolio Details */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6">
             <AssetAllocationChart />
-            <div className="space-y-4">
-              <PortfolioAssetsCard maxItems={10} />
-              <AssetsList maxItems={10} />
-            </div>
+            <PortfolioAssetsCard maxItems={10} />
           </div>
 
           {/* Portfolio Snapshots - Step 2 */}

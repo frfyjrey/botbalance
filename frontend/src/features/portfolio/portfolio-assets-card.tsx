@@ -227,9 +227,16 @@ export const PortfolioAssetsCard: React.FC<PortfolioAssetsCardProps> = ({
           >
             {formatValue(totalValue)}
           </div>
-          <p className="text-sm" style={{ color: 'rgb(var(--fg-muted))' }}>
-            {t('balances.total_value')}
-          </p>
+          <div className="flex items-center justify-between text-xs">
+            <span style={{ color: 'rgb(var(--fg-muted))' }}>
+              {t('balances.total_value')}
+            </span>
+            {balancesData.timestamp && (
+              <span style={{ color: 'rgb(var(--fg-muted))' }}>
+                {new Date(balancesData.timestamp).toLocaleString()}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
