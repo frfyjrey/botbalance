@@ -58,6 +58,7 @@ export const QUERY_KEYS = {
   TASK_STATUS: 'task-status',
   BALANCES: 'balances',
   PORTFOLIO_SUMMARY: 'portfolio-summary',
+  PORTFOLIO_STATE: 'portfolio-state', // New PortfolioState API
   STRATEGY: 'strategy',
   REBALANCE_PLAN: 'rebalance-plan',
   ORDERS: 'orders',

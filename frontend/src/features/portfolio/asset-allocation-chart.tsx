@@ -3,7 +3,7 @@ import { formatCurrencyUSD, formatNumberEnUS } from '@shared/lib/utils';
 import { useTranslation } from 'react-i18next';
 
 // Using GitHub-style card design like BalancesCard
-import { usePortfolioSummary, type PortfolioAsset } from '@entities/portfolio';
+import { usePortfolioData, type PortfolioAsset } from '@entities/portfolio';
 
 interface AssetAllocationChartProps {
   className?: string;
@@ -93,7 +93,7 @@ export const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
   className,
 }) => {
   const { t } = useTranslation('dashboard');
-  const { data: response, isLoading, error } = usePortfolioSummary();
+  const { data: response, isLoading, error } = usePortfolioData();
 
   if (isLoading) {
     return (

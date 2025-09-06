@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@shared/ui/Card';
-import { usePortfolioSummary } from '@entities/portfolio';
+import { usePortfolioData } from '@entities/portfolio';
 import { Badge } from '@shared/ui/badge';
 import clsx from 'clsx';
 
@@ -69,7 +69,7 @@ const AlertCircle = ({ className }: { className?: string }) => (
 );
 
 export function ExchangeStatusIndicator() {
-  const { data: portfolioData, isLoading, error } = usePortfolioSummary();
+  const { data: portfolioData, isLoading, error } = usePortfolioData();
 
   if (isLoading) {
     return (

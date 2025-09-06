@@ -2,7 +2,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@shared/ui/Button';
 import { formatNumberEnUS } from '@shared/lib/utils';
-import { usePortfolioSummary, type PortfolioAsset } from '@entities/portfolio';
+import { usePortfolioData, type PortfolioAsset } from '@entities/portfolio';
 import {
   useBalances,
   getAssetDisplayName,
@@ -79,7 +79,7 @@ export const PortfolioAssetsCard: React.FC<PortfolioAssetsCardProps> = ({
   maxItems = 10,
 }) => {
   const { t } = useTranslation('dashboard');
-  const { data: response } = usePortfolioSummary();
+  const { data: response } = usePortfolioData();
   const { data: balancesData, isLoading, isError } = useBalances();
   const [showAll, setShowAll] = React.useState(false);
 

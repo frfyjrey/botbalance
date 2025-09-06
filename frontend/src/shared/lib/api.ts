@@ -262,6 +262,44 @@ export const apiClient = {
     return apiRequest('/api/me/portfolio/last_snapshot/');
   },
 
+  // PortfolioState endpoints (new architecture)
+  async getPortfolioState(params?: {
+    connector_id?: number;
+  }): Promise<import('@entities/portfolio').PortfolioStateResponse> {
+    const queryParams = new URLSearchParams();
+    if (params?.connector_id) {
+      queryParams.set('connector_id', params.connector_id.toString());
+    }
+
+    const url = `/api/me/portfolio/state/${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+    return apiRequest<import('@entities/portfolio').PortfolioStateResponse>(
+      url,
+    );
+  },
+
+  async refreshPortfolioState(params?: {
+    connector_id?: number;
+    force?: boolean;
+  }): Promise<import('@entities/portfolio').RefreshPortfolioStateResponse> {
+    const queryParams = new URLSearchParams();
+    if (params?.connector_id) {
+      queryParams.set('connector_id', params.connector_id.toString());
+    }
+
+    return apiRequest<
+      import('@entities/portfolio').RefreshPortfolioStateResponse
+    >(
+      `/api/me/portfolio/state/refresh/${queryParams.toString() ? '?' + queryParams.toString() : ''}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ force: params?.force || false }),
+      },
+    );
+  },
+
   // Strategy endpoints
   async getStrategy(): Promise<import('@entities/strategy').StrategyResponse> {
     return apiRequest<import('@entities/strategy').StrategyResponse>(

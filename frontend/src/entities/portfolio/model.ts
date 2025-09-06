@@ -102,3 +102,90 @@ export const getExchangeStatusMessage = (
   }
   return null;
 };
+
+// =============================================================================
+// PORTFOLIO STATE MODELS (New Architecture - Step 5)
+// =============================================================================
+
+export interface PortfolioStatePosition {
+  amount: string;
+  quote_value: string;
+}
+
+export interface PortfolioState {
+  ts: string;
+  quote_asset: string;
+  nav_quote: string;
+  positions: Record<string, PortfolioStatePosition>;
+  prices: Record<string, string>;
+  source: string;
+  strategy_id: number | null;
+  universe_symbols: string[];
+  exchange_account: string;
+  updated_at: string;
+}
+
+export interface PortfolioStateResponse {
+  status: string;
+  state?: PortfolioState;
+  message?: string;
+  error_code?: string;
+}
+
+export interface RefreshPortfolioStateResponse {
+  status: string;
+  state?: PortfolioState;
+  message?: string;
+  error_code?: string;
+  retry_after_seconds?: number;
+  connector_id?: number;
+}
+
+/**
+ * Convert PortfolioState to PortfolioSummary format for compatibility
+ */
+export const portfolioStateToSummary = (
+  state: PortfolioState,
+): PortfolioSummary => {
+  const assets: PortfolioAsset[] = Object.entries(state.positions).map(
+    ([symbol, position]) => {
+      const balance = position.amount;
+      const value_usd = position.quote_value;
+      const nav = parseFloat(state.nav_quote);
+      const percentage =
+        nav > 0 ? ((parseFloat(value_usd) / nav) * 100).toFixed(2) : '0.00';
+
+      // Get price from state.prices
+      let price_usd: string | null = null;
+      if (symbol !== state.quote_asset && state.prices) {
+        const priceSymbol = `${symbol}${state.quote_asset}`;
+        if (state.prices[priceSymbol]) {
+          price_usd = state.prices[priceSymbol];
+        }
+      }
+
+      return {
+        symbol,
+        balance,
+        price_usd,
+        value_usd,
+        percentage,
+        price_source: 'state', // All prices from PortfolioState
+      };
+    },
+  );
+
+  return {
+    total_nav: state.nav_quote,
+    assets,
+    quote_currency: state.quote_asset,
+    timestamp: state.ts,
+    exchange_account: state.exchange_account,
+    price_cache_stats: {
+      cache_backend: 'portfoliostate',
+      default_ttl: 300,
+      stale_threshold: 300,
+      supported_quotes: [state.quote_asset],
+    },
+  };
+};
