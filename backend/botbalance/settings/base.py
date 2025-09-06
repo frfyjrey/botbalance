@@ -286,3 +286,10 @@ LOGGING = {
         },
     },
 }
+
+# =============================================================================
+# CONNECTOR HEALTH MONITORING
+# =============================================================================
+
+# Time window in seconds for considering a connector healthy
+CONNECTOR_HEALTH_WINDOW_SEC = int(os.getenv("CONNECTOR_HEALTH_WINDOW_SEC", "60"))

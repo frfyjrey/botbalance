@@ -90,6 +90,26 @@ class ExchangeAccount(models.Model):
         help_text="Last time API credentials were successfully tested",
     )
 
+    # Health monitoring fields (Step 5 - connector health)
+    last_success_at = models.DateTimeField(
+        null=True, blank=True, help_text="Last successful operation timestamp (UTC)"
+    )
+
+    last_latency_ms = models.PositiveIntegerField(
+        null=True, blank=True, help_text="Last operation latency in milliseconds"
+    )
+
+    last_error_code = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        help_text="Last error code (e.g., 'AUTH_ERROR', 'RATE_LIMITED')",
+    )
+
+    last_error_at = models.DateTimeField(
+        null=True, blank=True, help_text="Last error timestamp (UTC)"
+    )
+
     class Meta:
         # User can have multiple accounts per exchange (e.g., testnet + mainnet)
         # but only one per (user, exchange, account_type, testnet) combination
@@ -179,6 +199,35 @@ class ExchangeAccount(models.Model):
         except Exception:
             # Connection test failed
             return False
+
+    def is_healthy(self, window_seconds: int = 60) -> bool:
+        """
+        Check if connector is healthy based on recent successful operations.
+
+        Args:
+            window_seconds: Health window in seconds (default from settings)
+
+        Returns:
+            bool: True if last successful operation was within window
+        """
+        if not self.last_success_at:
+            return False
+
+        now = timezone.now()
+        time_since_success = (now - self.last_success_at).total_seconds()
+        return time_since_success <= window_seconds
+
+    def update_health_success(self, latency_ms: int):
+        """Update health fields after successful operation."""
+        self.last_success_at = timezone.now()
+        self.last_latency_ms = latency_ms
+        self.save(update_fields=["last_success_at", "last_latency_ms"])
+
+    def update_health_error(self, error_code: str):
+        """Update health fields after failed operation."""
+        self.last_error_code = error_code
+        self.last_error_at = timezone.now()
+        self.save(update_fields=["last_error_code", "last_error_at"])
 
 
 class PortfolioSnapshot(models.Model):

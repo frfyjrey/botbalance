@@ -440,9 +440,14 @@ class BinanceAdapter(ExchangeAdapter):
         await self._request("GET", "/api/v3/ping")
         return True
 
-    async def server_time(self) -> int:
+    async def get_server_time(self) -> int:
+        """Get Binance server time in milliseconds."""
         data = await self._request("GET", "/api/v3/time")
         return int(data.get("serverTime", 0))
+
+    async def server_time(self) -> int:
+        """Legacy alias for get_server_time."""
+        return await self.get_server_time()
 
     async def _get_last_price(self, symbol: str) -> Decimal:
         data = await self._request(

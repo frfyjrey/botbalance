@@ -57,6 +57,19 @@ class ExchangeAdapter(ABC):
         """Return exchange name identifier."""
         pass
 
+    # Server Status
+    @abstractmethod
+    async def get_server_time(self) -> int:
+        """
+        Get exchange server time in milliseconds.
+
+        Used for health checks and time synchronization.
+
+        Returns:
+            Server timestamp in milliseconds
+        """
+        pass
+
     # Market Data
     @abstractmethod
     async def get_price(self, symbol: str) -> Decimal:

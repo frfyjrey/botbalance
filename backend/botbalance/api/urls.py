@@ -70,6 +70,11 @@ me_patterns = [
         views.test_exchange_account_view,
         name="test_exchange_account",
     ),
+    path(
+        "exchanges/<int:account_id>/check/",
+        views.check_exchange_account_view,
+        name="check_exchange_account",
+    ),
 ]
 
 urlpatterns = [

@@ -13,6 +13,8 @@ import {
   exchangeApi,
   EXCHANGE_CHOICES,
   ACCOUNT_TYPE_CHOICES,
+  getHealthStatusColor,
+  getHealthStatusText,
 } from '@entities/exchange';
 
 const ExchangesPage = () => {
@@ -25,6 +27,7 @@ const ExchangesPage = () => {
     null,
   );
   const [testingId, setTestingId] = useState<number | null>(null);
+  const [checkingId, setCheckingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
   // Fetch exchange accounts
@@ -90,6 +93,20 @@ const ExchangesPage = () => {
         return await exchangeApi.test(id);
       } finally {
         setTestingId(null);
+      }
+    },
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: [QUERY_KEYS.EXCHANGE_ACCOUNTS] }),
+  });
+
+  // Health check mutation
+  const checkMutation = useMutation({
+    mutationFn: async (id: number) => {
+      setCheckingId(id);
+      try {
+        return await exchangeApi.check(id);
+      } finally {
+        setCheckingId(null);
       }
     },
     onSuccess: () =>
@@ -413,7 +430,7 @@ const ExchangesPage = () => {
                 <th className="text-left p-4 font-medium">Name</th>
                 <th className="text-left p-4 font-medium">Exchange</th>
                 <th className="text-left p-4 font-medium">Type</th>
-                <th className="text-left p-4 font-medium">Status</th>
+                <th className="text-left p-4 font-medium">Health</th>
                 <th className="text-left p-4 font-medium">Last Tested</th>
                 <th className="text-left p-4 font-medium">Actions</th>
               </tr>
@@ -432,15 +449,27 @@ const ExchangesPage = () => {
                   <td className="p-4 capitalize">{account.exchange}</td>
                   <td className="p-4 capitalize">{account.account_type}</td>
                   <td className="p-4">
-                    <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                        account.is_active
-                          ? 'bg-green-50 text-green-700 border border-green-200'
-                          : 'bg-gray-50 text-gray-700 border border-gray-200'
-                      }`}
-                    >
-                      {account.is_active ? 'Active' : 'Inactive'}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <div
+                        className={`w-2 h-2 rounded-full ${
+                          getHealthStatusColor(account, 60).includes('green')
+                            ? 'bg-green-500'
+                            : getHealthStatusColor(account, 60).includes('red')
+                              ? 'bg-red-500'
+                              : 'bg-gray-400'
+                        }`}
+                      />
+                      <span
+                        className={`text-xs ${getHealthStatusColor(account, 60)}`}
+                      >
+                        {getHealthStatusText(account, 60)}
+                      </span>
+                      {!account.is_active && (
+                        <span className="ml-2 inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-600">
+                          Неактивен
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="p-4 text-xs text-muted-foreground">
                     {account.last_tested_at
@@ -450,9 +479,18 @@ const ExchangesPage = () => {
                   <td className="p-4">
                     <div className="flex gap-2">
                       <Button
+                        onClick={() => checkMutation.mutate(account.id)}
+                        disabled={checkingId === account.id}
+                        className="btn-github btn-github-invisible text-xs px-2 py-1"
+                        title="Быстрая проверка соединения"
+                      >
+                        {checkingId === account.id ? 'Checking...' : 'Check'}
+                      </Button>
+                      <Button
                         onClick={() => testMutation.mutate(account.id)}
                         disabled={testingId === account.id}
                         className="btn-github btn-github-invisible text-xs px-2 py-1"
+                        title="Полная проверка API"
                       >
                         {testingId === account.id ? 'Testing...' : 'Test'}
                       </Button>

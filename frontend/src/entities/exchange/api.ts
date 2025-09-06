@@ -7,6 +7,7 @@ import type {
   ExchangeAccount,
   ExchangeAccountCreateRequest,
   ExchangeAccountUpdateRequest,
+  HealthCheckResponse,
 } from './model';
 
 export const exchangeApi = {
@@ -53,5 +54,9 @@ export const exchangeApi = {
       message: response.message,
       last_tested_at: response.last_tested_at,
     };
+  },
+
+  async check(id: number): Promise<HealthCheckResponse> {
+    return await apiClient.checkExchangeAccount(id);
   },
 };

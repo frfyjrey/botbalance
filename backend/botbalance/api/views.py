@@ -897,24 +897,7 @@ def portfolio_summary_view(request):
                 "testnet": exchange_account.testnet,
                 "is_active": exchange_account.is_active,
             },
-            "exchange_status": {
-                "is_available": not using_fallback,
-                "using_fallback_data": using_fallback,
-                "fallback_age_minutes": fallback_age_minutes
-                if using_fallback
-                else None,
-                "last_successful_fetch": portfolio_summary.timestamp.isoformat()
-                if portfolio_summary.timestamp
-                else None,
-                "next_retry_in_seconds": portfolio_service.circuit_breaker.get_circuit_status(
-                    exchange_account
-                )["time_until_retry_seconds"]
-                if using_fallback
-                else None,
-                "circuit_breaker_status": portfolio_service.get_exchange_status(
-                    exchange_account
-                ),
-            },
+            # exchange_status removed - replaced by simple health fields in ExchangeAccount model
         }
 
         serializer = PortfolioSummaryResponseSerializer(data=response_data)
@@ -1749,6 +1732,156 @@ def test_exchange_account_view(request, account_id):
         logger.error(f"Exchange account connection test failed: {e}")
         return Response(
             {"status": "error", "message": f"Connection test failed: {str(e)}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def check_exchange_account_view(request, account_id):
+    """
+    Perform lightweight health check on exchange account.
+
+    Makes 2 quick API calls:
+    1. Public /api/v3/time endpoint (without auth)
+    2. Signed /api/v3/openOrders?limit=1 endpoint (with auth)
+
+    Updates health fields and returns status with latency metrics.
+    Does not calculate portfolio state or prices.
+    """
+    import asyncio
+    import time
+
+    from django.utils import timezone
+
+    from botbalance.exchanges.models import ExchangeAccount
+
+    try:
+        account = ExchangeAccount.objects.get(id=account_id, user=request.user)
+    except ExchangeAccount.DoesNotExist:
+        return Response(
+            {"status": "error", "message": "Exchange account not found"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    async def perform_health_check():
+        """Perform the actual health check with timing."""
+        start_time = time.time()
+
+        try:
+            adapter = account.get_adapter()
+
+            # 1. Public endpoint test - get server time (no auth required)
+            public_start = time.time()
+            public_success = False
+            public_error = None
+            try:
+                await adapter.get_server_time()
+                public_ms = int((time.time() - public_start) * 1000)
+                public_success = True
+            except Exception as e:
+                public_ms = int((time.time() - public_start) * 1000)
+                public_error = str(e)
+
+            # 2. Signed endpoint test - get open orders with limit (requires auth)
+            signed_start = time.time()
+            signed_success = False
+            signed_error = None
+            try:
+                # Get open orders - limit is handled internally by adapter
+                await adapter.get_open_orders()
+                signed_ms = int((time.time() - signed_start) * 1000)
+                signed_success = True
+            except Exception as e:
+                signed_ms = int((time.time() - signed_start) * 1000)
+                signed_error = str(e)
+
+            total_latency = int((time.time() - start_time) * 1000)
+
+            # Determine overall status
+            if public_success and signed_success:
+                status_result = "healthy"
+                account.update_health_success(total_latency)
+            elif public_success and not signed_success:
+                if signed_error and (
+                    "API-key" in signed_error
+                    or "signature" in signed_error
+                    or "Invalid API" in signed_error
+                ):
+                    status_result = "auth_error"
+                    account.update_health_error("AUTH_ERROR")
+                elif signed_error and (
+                    "rate limit" in signed_error.lower() or "429" in signed_error
+                ):
+                    status_result = "rate_limited"
+                    account.update_health_error("RATE_LIMITED")
+                else:
+                    status_result = "down"
+                    account.update_health_error("API_ERROR")
+            elif not public_success:
+                if public_error and "timeout" in public_error.lower():
+                    status_result = "down"
+                    account.update_health_error("TIMEOUT")
+                elif abs(time.time() - start_time) > 30:  # Simple time skew check
+                    status_result = "time_skew"
+                    account.update_health_error("TIME_SKEW")
+                else:
+                    status_result = "down"
+                    account.update_health_error("NETWORK_ERROR")
+            else:
+                status_result = "down"
+                account.update_health_error("DOWN")
+
+            return {
+                "status": status_result,
+                "public_ms": public_ms if public_success else None,
+                "signed_ms": signed_ms if signed_success else None,
+                "total_latency_ms": total_latency,
+                "checked_at": timezone.now().isoformat(),
+                "public_success": public_success,
+                "signed_success": signed_success,
+                "public_error": public_error if not public_success else None,
+                "signed_error": signed_error if not signed_success else None,
+            }
+
+        except Exception as e:
+            # Catastrophic failure
+            total_latency = int((time.time() - start_time) * 1000)
+            account.update_health_error("CRITICAL_ERROR")
+            return {
+                "status": "down",
+                "public_ms": None,
+                "signed_ms": None,
+                "total_latency_ms": total_latency,
+                "checked_at": timezone.now().isoformat(),
+                "error": str(e),
+            }
+
+    try:
+        result = asyncio.run(perform_health_check())
+
+        return Response(
+            {
+                "status": "success",
+                "connector_id": account.id,
+                "connector_name": account.name,
+                "health_check": result,
+            }
+        )
+
+    except Exception as e:
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.error(f"Health check failed for account {account_id}: {e}")
+
+        account.update_health_error("CHECK_FAILED")
+        return Response(
+            {
+                "status": "error",
+                "message": f"Health check failed: {str(e)}",
+                "connector_id": account.id,
+            },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 

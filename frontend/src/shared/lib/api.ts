@@ -518,4 +518,15 @@ export const apiClient = {
       method: 'POST',
     });
   },
+
+  async checkExchangeAccount(
+    id: number,
+  ): Promise<import('@entities/exchange').HealthCheckResponse> {
+    return apiRequest<import('@entities/exchange').HealthCheckResponse>(
+      `/api/me/exchanges/${id}/check/`,
+      {
+        method: 'POST',
+      },
+    );
+  },
 };

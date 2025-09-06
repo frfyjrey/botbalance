@@ -259,6 +259,10 @@ class OKXAdapter(ExchangeAdapter):
             raise last_exc
         raise ExchangeAPIError(f"OKX request failed: {last_exc}")
 
+    async def get_server_time(self) -> int:
+        """Get OKX server timestamp in milliseconds."""
+        return await self._get_server_time()
+
     async def _get_server_time(self) -> int:
         """Get OKX server timestamp in milliseconds."""
         logger.error("🕐 ATTEMPTING TO GET OKX SERVER TIME...")

@@ -6,12 +6,11 @@ and portfolio summary data for the dashboard.
 """
 
 import logging
-import time
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 from typing import NamedTuple
 
-from django.core.cache import cache
+from django.core.cache import cache  # Still needed for cooldown
 from django.utils import timezone
 
 from .models import ExchangeAccount, PortfolioState
@@ -20,137 +19,7 @@ from .price_service import price_service
 logger = logging.getLogger(__name__)
 
 
-class ExchangeCircuitBreaker:
-    """
-    Circuit breaker pattern for exchange API calls.
-
-    Prevents repeated failed calls to unavailable exchanges by tracking failures
-    and temporarily disabling calls when failure threshold is reached.
-    """
-
-    def __init__(self, failure_threshold: int = 3, circuit_timeout: int = 600):
-        """
-        Initialize circuit breaker.
-
-        Args:
-            failure_threshold: Number of failures before opening circuit
-            circuit_timeout: Time in seconds to keep circuit open
-        """
-        self.failure_threshold = failure_threshold
-        self.circuit_timeout = circuit_timeout
-
-    def _get_exchange_key(self, exchange_account: ExchangeAccount) -> str:
-        """Generate unique key for exchange account."""
-        return f"{exchange_account.exchange}_{exchange_account.testnet}_{exchange_account.account_type}"
-
-    def should_attempt_call(self, exchange_account: ExchangeAccount) -> bool:
-        """
-        Check if we should attempt a call to the exchange.
-
-        Returns:
-            False if circuit is OPEN (exchange marked as down)
-            True if circuit is CLOSED (safe to attempt call)
-        """
-        exchange_key = self._get_exchange_key(exchange_account)
-
-        # Get failure count and last failure time
-        failures_key = f"circuit_failures_{exchange_key}"
-        last_failure_key = f"circuit_last_failure_{exchange_key}"
-
-        failure_count = cache.get(failures_key, 0)
-        last_failure_time = cache.get(last_failure_key, 0)
-
-        # If we haven't reached failure threshold, allow call
-        if failure_count < self.failure_threshold:
-            return True
-
-        # Circuit is potentially OPEN - check if timeout has passed
-        current_time = time.time()
-        if current_time - last_failure_time > self.circuit_timeout:
-            # Timeout passed - reset circuit and allow one probe call
-            logger.info(
-                f"Circuit breaker timeout expired for {exchange_key}, allowing probe call"
-            )
-            self._reset_circuit(exchange_account)
-            return True
-
-        # Circuit is OPEN - block call
-        logger.debug(f"Circuit breaker OPEN for {exchange_key}, blocking call")
-        return False
-
-    def record_success(self, exchange_account: ExchangeAccount):
-        """Record successful call - reset circuit if it was open."""
-        exchange_key = self._get_exchange_key(exchange_account)
-
-        failures_key = f"circuit_failures_{exchange_key}"
-        failure_count = cache.get(failures_key, 0)
-
-        if failure_count > 0:
-            logger.info(f"Exchange {exchange_key} recovered, resetting circuit breaker")
-            self._reset_circuit(exchange_account)
-
-    def record_failure(self, exchange_account: ExchangeAccount, exception: Exception):
-        """Record failed call - potentially open circuit."""
-        exchange_key = self._get_exchange_key(exchange_account)
-
-        failures_key = f"circuit_failures_{exchange_key}"
-        last_failure_key = f"circuit_last_failure_{exchange_key}"
-
-        # Increment failure count
-        failure_count = cache.get(failures_key, 0) + 1
-        cache.set(failures_key, failure_count, self.circuit_timeout)
-        cache.set(last_failure_key, time.time(), self.circuit_timeout)
-
-        if failure_count >= self.failure_threshold:
-            logger.warning(
-                f"Circuit breaker OPENED for {exchange_key} after {failure_count} failures. "
-                f"Next retry in {self.circuit_timeout // 60} minutes. Error: {exception}"
-            )
-        else:
-            logger.debug(
-                f"Recorded failure {failure_count}/{self.failure_threshold} for {exchange_key}"
-            )
-
-    def _reset_circuit(self, exchange_account: ExchangeAccount):
-        """Reset circuit breaker to CLOSED state."""
-        exchange_key = self._get_exchange_key(exchange_account)
-
-        failures_key = f"circuit_failures_{exchange_key}"
-        last_failure_key = f"circuit_last_failure_{exchange_key}"
-
-        cache.delete(failures_key)
-        cache.delete(last_failure_key)
-
-    def is_circuit_open(self, exchange_account: ExchangeAccount) -> bool:
-        """Check if circuit is currently OPEN (exchange marked as down)."""
-        return not self.should_attempt_call(exchange_account)
-
-    def get_circuit_status(self, exchange_account: ExchangeAccount) -> dict:
-        """Get detailed circuit status for monitoring."""
-        exchange_key = self._get_exchange_key(exchange_account)
-
-        failures_key = f"circuit_failures_{exchange_key}"
-        last_failure_key = f"circuit_last_failure_{exchange_key}"
-
-        failure_count = cache.get(failures_key, 0)
-        last_failure_time = cache.get(last_failure_key, 0)
-
-        is_open = failure_count >= self.failure_threshold
-        time_until_retry = 0
-
-        if is_open and last_failure_time:
-            time_until_retry = max(
-                0, self.circuit_timeout - (time.time() - last_failure_time)
-            )
-
-        return {
-            "exchange_key": exchange_key,
-            "is_open": is_open,
-            "failure_count": failure_count,
-            "failure_threshold": self.failure_threshold,
-            "last_failure_time": last_failure_time,
-            "time_until_retry_seconds": int(time_until_retry),
-        }
+# Circuit breaker removed - now using simple health tracking in ExchangeAccount model
 
 
 class Balance(NamedTuple):
@@ -201,10 +70,6 @@ class PortfolioService:
 
     def __init__(self):
         self.price_service = price_service
-        self.circuit_breaker = ExchangeCircuitBreaker(
-            failure_threshold=3,  # Open circuit after 3 failures
-            circuit_timeout=600,  # Keep circuit open for 10 minutes
-        )
 
     def _round_decimal(self, value: Decimal, precision: int) -> Decimal:
         """Round decimal to specified precision."""
@@ -297,24 +162,11 @@ class PortfolioService:
         try:
             logger.info(f"Calculating portfolio for account: {exchange_account.name}")
 
-            # Check circuit breaker before attempting call
-            if not self.circuit_breaker.should_attempt_call(exchange_account):
-                exchange_key = self.circuit_breaker._get_exchange_key(exchange_account)
-                status = self.circuit_breaker.get_circuit_status(exchange_account)
-                logger.info(
-                    f"Circuit breaker OPEN for {exchange_key}, skipping live calculation. "
-                    f"Retry in {status['time_until_retry_seconds']}s"
-                )
-                return None
-
             # Get balances from exchange
             adapter = exchange_account.get_adapter()
             raw_balances_dict = await adapter.get_balances(
                 exchange_account.account_type
             )
-
-            # Record successful call
-            self.circuit_breaker.record_success(exchange_account)
 
             if not raw_balances_dict:
                 logger.warning(f"No balances found for account {exchange_account.name}")
@@ -689,10 +541,6 @@ class PortfolioService:
 
         except Exception as e:
             logger.error(f"Portfolio calculation failed: {e}", exc_info=True)
-
-            # Record failure in circuit breaker
-            self.circuit_breaker.record_failure(exchange_account, e)
-
             return None
 
     async def get_portfolio_assets_only(
@@ -754,22 +602,7 @@ class PortfolioService:
 
         return issues
 
-    def get_exchange_status(self, exchange_account: ExchangeAccount) -> dict:
-        """
-        Get exchange health status and circuit breaker information.
-
-        Returns:
-            Dict with exchange status, circuit breaker state, and timing info
-        """
-        circuit_status = self.circuit_breaker.get_circuit_status(exchange_account)
-
-        return {
-            "exchange": exchange_account.exchange,
-            "account_type": exchange_account.account_type,
-            "testnet": exchange_account.testnet,
-            "is_available": not circuit_status["is_open"],
-            "circuit_breaker": circuit_status,
-        }
+    # get_exchange_status removed - replaced by simple health fields in ExchangeAccount model
 
     async def calculate_state_for_strategy(
         self, exchange_account: ExchangeAccount
@@ -956,7 +789,10 @@ class PortfolioService:
             Tuple of (PortfolioState, error_code) where error_code is None on success
             Error codes: "NO_ACTIVE_STRATEGY", "ERROR_PRICING", "TOO_MANY_REQUESTS"
         """
+        import time
+
         logger.info(f"Upserting portfolio state for account: {exchange_account.name}")
+        start_time = time.time()
 
         try:
             # 1. Check cooldown protection (3-5 seconds per connector)
@@ -976,8 +812,10 @@ class PortfolioService:
                 ).exists()
 
                 if not strategy_exists:
+                    exchange_account.update_health_error("NO_ACTIVE_STRATEGY")
                     return None, "NO_ACTIVE_STRATEGY"
                 else:
+                    exchange_account.update_health_error("ERROR_PRICING")
                     return None, "ERROR_PRICING"
 
             # 3. Set cooldown (5 seconds)
@@ -999,15 +837,21 @@ class PortfolioService:
             )
 
             action = "created" if created else "updated"
+
+            # 5. Update health status for successful operation
+            latency_ms = int((time.time() - start_time) * 1000)
+            exchange_account.update_health_success(latency_ms)
+
             logger.info(
                 f"PortfolioState {action} for account {exchange_account.name}: "
-                f"NAV={state.nav_quote} {state.quote_asset}"
+                f"NAV={state.nav_quote} {state.quote_asset}, latency={latency_ms}ms"
             )
 
             return state, None
 
         except Exception as e:
             logger.error(f"Failed to upsert portfolio state: {e}", exc_info=True)
+            exchange_account.update_health_error("ERROR_PRICING")
             return None, "ERROR_PRICING"  # Generic error
 
 
