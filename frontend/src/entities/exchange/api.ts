@@ -45,17 +45,6 @@ export const exchangeApi = {
     await apiClient.deleteExchangeAccount(id);
   },
 
-  async test(
-    id: number,
-  ): Promise<{ success: boolean; message: string; last_tested_at?: string }> {
-    const response = await apiClient.testExchangeAccount(id);
-    return {
-      success: response.status === 'success',
-      message: response.message,
-      last_tested_at: response.last_tested_at,
-    };
-  },
-
   async check(id: number): Promise<HealthCheckResponse> {
     return await apiClient.checkExchangeAccount(id);
   },

@@ -505,20 +505,6 @@ export const apiClient = {
     );
   },
 
-  async testExchangeAccount(id: number): Promise<{
-    status: string;
-    message: string;
-    last_tested_at?: string;
-  }> {
-    return apiRequest<{
-      status: string;
-      message: string;
-      last_tested_at?: string;
-    }>(`/api/me/exchanges/${id}/test/`, {
-      method: 'POST',
-    });
-  },
-
   async checkExchangeAccount(
     id: number,
   ): Promise<import('@entities/exchange').HealthCheckResponse> {

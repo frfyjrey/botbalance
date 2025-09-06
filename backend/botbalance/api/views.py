@@ -1686,58 +1686,6 @@ def exchange_account_detail_view(request, account_id):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
-def test_exchange_account_view(request, account_id):
-    """
-    Test connection to exchange account.
-
-    POST: Tests API connection and updates last_tested_at
-    """
-    from botbalance.exchanges.models import ExchangeAccount
-
-    try:
-        account = ExchangeAccount.objects.get(id=account_id, user=request.user)
-    except ExchangeAccount.DoesNotExist:
-        return Response(
-            {"status": "error", "message": "Exchange account not found"},
-            status=status.HTTP_404_NOT_FOUND,
-        )
-
-    try:
-        # Test connection
-        success = account.test_connection()
-
-        if success:
-            return Response(
-                {
-                    "status": "success",
-                    "message": f"Connection to {account.name} successful",
-                    "last_tested_at": account.last_tested_at.isoformat()
-                    if account.last_tested_at
-                    else None,
-                }
-            )
-        else:
-            return Response(
-                {
-                    "status": "error",
-                    "message": f"Connection to {account.name} failed. Please check your API credentials.",
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-    except Exception as e:
-        import logging
-
-        logger = logging.getLogger(__name__)
-        logger.error(f"Exchange account connection test failed: {e}")
-        return Response(
-            {"status": "error", "message": f"Connection test failed: {str(e)}"},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
-
-
-@api_view(["POST"])
-@permission_classes([IsAuthenticated])
 def check_exchange_account_view(request, account_id):
     """
     Perform lightweight health check on exchange account.
