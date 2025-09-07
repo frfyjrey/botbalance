@@ -14,7 +14,6 @@ from django.conf import settings
 from django.contrib.auth.models import User
 
 from .models import ExchangeAccount, PortfolioSnapshot, PortfolioState
-from .portfolio_service import portfolio_service
 
 
 def sanitize_for_logs(text: str) -> str:
@@ -29,6 +28,15 @@ def sanitize_for_logs(text: str) -> str:
 
 
 logger = logging.getLogger(__name__)
+
+
+# Custom exception for SnapshotService error handling
+class NoPortfolioStateError(Exception):
+    """Raised when PortfolioState is required but doesn't exist."""
+
+    def __init__(self, message: str = "Portfolio state not found for connector"):
+        self.error_code = "NO_STATE"
+        super().__init__(message)
 
 
 class SnapshotData(NamedTuple):
@@ -97,64 +105,25 @@ class SnapshotService:
                 )
                 return None
 
-            # NEW: Try to create snapshot from PortfolioState first (preferred method)
-            if PortfolioState.objects.filter(
+            # NEW BEHAVIOR: Only create snapshots from PortfolioState
+            # If PortfolioState doesn't exist, raise NO_STATE error (no fallbacks)
+            if not PortfolioState.objects.filter(
                 exchange_account=exchange_account
             ).exists():
-                logger.info(
-                    f"Found PortfolioState for {exchange_account.name}, creating snapshot from State"
+                raise NoPortfolioStateError(
+                    f"No PortfolioState found for {exchange_account.name}. "
+                    "Refresh portfolio state first."
                 )
-                return await self.create_snapshot_from_state(
-                    user=user,
-                    exchange_account=exchange_account,
-                    source=source,
-                    strategy_version=strategy_version,
-                )
-            else:
-                logger.info(
-                    f"No PortfolioState for {exchange_account.name}, falling back to legacy calculation"
-                )
-
-            # FALLBACK: Use legacy portfolio calculation method
-            portfolio_summary = await portfolio_service.calculate_portfolio_summary(
-                exchange_account,
-                force_refresh_prices=(source in ["order_fill", "cron"]),
-            )
-
-            if not portfolio_summary:
-                logger.error(
-                    f"Failed to calculate portfolio summary for user {sanitize_for_logs(user.username)}"
-                )
-                return None
-
-            # Prepare snapshot data from legacy summary
-            snapshot_data = self._prepare_snapshot_data(portfolio_summary)
-
-            # Create snapshot (use sync_to_async for Django ORM in async context)
-            from asgiref.sync import sync_to_async
-
-            @sync_to_async
-            def create_snapshot_sync():
-                return PortfolioSnapshot.objects.create(
-                    user=user,
-                    exchange_account=exchange_account,
-                    quote_asset=snapshot_data.quote_asset,
-                    nav_quote=snapshot_data.nav_quote,
-                    positions=snapshot_data.positions,
-                    prices={k: str(v) for k, v in snapshot_data.prices.items()},
-                    source=source,
-                    strategy_version=strategy_version,
-                )
-
-            snapshot = await create_snapshot_sync()
 
             logger.info(
-                f"Created snapshot {snapshot.id} (legacy) for user {sanitize_for_logs(user.username)}: "
-                f"NAV={snapshot.nav_quote} {snapshot.quote_asset}, "
-                f"assets={snapshot.get_asset_count()}"
+                f"Found PortfolioState for {exchange_account.name}, creating snapshot from State"
             )
-
-            return snapshot
+            return await self.create_snapshot_from_state(
+                user=user,
+                exchange_account=exchange_account,
+                source=source,
+                strategy_version=strategy_version,
+            )
 
         except Exception as e:
             logger.error(

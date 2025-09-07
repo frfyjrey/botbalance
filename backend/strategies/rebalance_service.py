@@ -20,6 +20,36 @@ from .models import Strategy
 logger = logging.getLogger(__name__)
 
 
+# Custom exceptions for RebalanceService error handling
+class RebalanceError(Exception):
+    """Base exception for rebalancing errors."""
+
+    def __init__(self, message: str, error_code: str):
+        self.error_code = error_code
+        super().__init__(message)
+
+
+class NoPricingDataError(RebalanceError):
+    """Raised when pricing data is unavailable."""
+
+    def __init__(self, message: str = "Pricing data unavailable - cannot place orders"):
+        super().__init__(message, "ERROR_PRICING")
+
+
+class NoActiveStrategyError(RebalanceError):
+    """Raised when no active strategy found for connector."""
+
+    def __init__(self, message: str = "No active strategy found for connector"):
+        super().__init__(message, "NO_ACTIVE_STRATEGY")
+
+
+class RateLimitExceededError(RebalanceError):
+    """Raised when rate limit is exceeded."""
+
+    def __init__(self, message: str = "Rate limit exceeded - try again later"):
+        super().__init__(message, "TOO_MANY_REQUESTS")
+
+
 class RebalanceAction(NamedTuple):
     """A single rebalancing action (buy/sell/hold)."""
 
@@ -119,14 +149,22 @@ class RebalanceService:
                     f"Cannot rebalance strategy {strategy.name}: PortfolioState error: {error_code}"
                 )
                 if error_code == "ERROR_PRICING":
-                    logger.error(
+                    raise NoPricingDataError(
                         "Pricing data unavailable - cannot place orders without accurate prices"
                     )
                 elif error_code == "TOO_MANY_REQUESTS":
-                    logger.warning("Rate limited - skipping rebalance for this cycle")
+                    raise RateLimitExceededError(
+                        "Rate limited - skipping rebalance for this cycle"
+                    )
                 elif error_code == "NO_ACTIVE_STRATEGY":
-                    logger.error("No active strategy found for connector")
-                return None
+                    raise NoActiveStrategyError(
+                        "No active strategy found for connector"
+                    )
+                else:
+                    # Unknown error code
+                    raise RebalanceError(
+                        f"Unknown portfolio state error: {error_code}", error_code
+                    )
 
             if not portfolio_state:
                 logger.error("Failed to create/update PortfolioState")

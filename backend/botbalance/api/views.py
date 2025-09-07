@@ -1047,7 +1047,10 @@ def create_portfolio_snapshot_view(request):
     import logging
 
     from botbalance.exchanges.models import ExchangeAccount
-    from botbalance.exchanges.snapshot_service import snapshot_service
+    from botbalance.exchanges.snapshot_service import (
+        NoPortfolioStateError,
+        snapshot_service,
+    )
 
     logger = logging.getLogger(__name__)
 
@@ -1073,24 +1076,35 @@ def create_portfolio_snapshot_view(request):
         ).first()
 
         # Create snapshot
-        if force:
-            # Force creation bypasses throttling
-            snapshot = asyncio.run(
-                snapshot_service.create_snapshot(
-                    user=request.user,
-                    exchange_account=exchange_account,
-                    source="summary",
-                    force=True,
+        try:
+            if force:
+                # Force creation bypasses throttling
+                snapshot = asyncio.run(
+                    snapshot_service.create_snapshot(
+                        user=request.user,
+                        exchange_account=exchange_account,
+                        source="summary",
+                        force=True,
+                    )
                 )
-            )
-        else:
-            # Use throttled creation
-            snapshot = asyncio.run(
-                snapshot_service.throttled_create_snapshot(
-                    user=request.user,
-                    exchange_account=exchange_account,
-                    source="summary",
+            else:
+                # Use throttled creation
+                snapshot = asyncio.run(
+                    snapshot_service.throttled_create_snapshot(
+                        user=request.user,
+                        exchange_account=exchange_account,
+                        source="summary",
+                    )
                 )
+        except NoPortfolioStateError as e:
+            return Response(
+                {
+                    "status": "error",
+                    "message": str(e),
+                    "error_code": e.error_code,
+                    "suggestion": "Refresh portfolio state first using POST /api/me/portfolio/state/refresh/",
+                },
+                status=status.HTTP_409_CONFLICT,
             )
 
         if snapshot:
