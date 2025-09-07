@@ -4,9 +4,13 @@ import { Button } from '@shared/ui/Button';
 import { formatNumberEnUS } from '@shared/lib/utils';
 import {
   usePortfolioData,
+  usePortfolioDataWithErrors,
   useRefreshPortfolioState,
   type PortfolioAsset,
 } from '@entities/portfolio';
+import { FEATURE_FLAGS } from '@shared/config/constants';
+import { PortfolioErrorDisplay } from './portfolio-error-display';
+import { StaleDataBadge } from './stale-data-badge';
 import {
   useBalances,
   getAssetDisplayName,
@@ -83,7 +87,12 @@ export const PortfolioAssetsCard: React.FC<PortfolioAssetsCardProps> = ({
   maxItems = 10,
 }) => {
   const { t } = useTranslation('dashboard');
-  const { data: response, isError: portfolioError } = usePortfolioData();
+  
+  // Use enhanced hook if feature flag enabled, fallback to original
+  const enhancedQuery = usePortfolioDataWithErrors();
+  const fallbackQuery = usePortfolioData();
+  const portfolioQuery = FEATURE_FLAGS.STATE_API ? enhancedQuery : fallbackQuery;
+  
   const { data: balancesData, isLoading, isError } = useBalances();
   const [showAll, setShowAll] = React.useState(false);
   const refreshPortfolioState = useRefreshPortfolioState();
@@ -156,14 +165,20 @@ export const PortfolioAssetsCard: React.FC<PortfolioAssetsCardProps> = ({
     );
   }
 
-  // Empty state: no PortfolioState found (ERROR_NO_STATE)
-  if (
-    !response ||
-    (portfolioError &&
-      typeof portfolioError === 'object' &&
-      'status' in portfolioError &&
-      (portfolioError as { status: number }).status === 404)
-  ) {
+  // Enhanced error handling for PortfolioState API
+  if (FEATURE_FLAGS.STATE_API && 'errorDetails' in portfolioQuery && portfolioQuery.errorDetails?.isError) {
+    return (
+      <PortfolioErrorDisplay
+        errorDetails={portfolioQuery.errorDetails}
+        onRefresh={() => refreshPortfolioState.mutate({})}
+        isRefreshLoading={refreshPortfolioState.isPending}
+        className={className}
+      />
+    );
+  }
+  
+  // Legacy error handling - Empty state: no PortfolioState found (ERROR_NO_STATE)
+  if (!portfolioQuery.data) {
     return (
       <div className={`card-github ${className}`}>
         <div
@@ -233,6 +248,7 @@ export const PortfolioAssetsCard: React.FC<PortfolioAssetsCardProps> = ({
     );
   }
 
+  const response = portfolioQuery.data;
   const portfolioMap: Record<string, PortfolioAsset> =
     response && response.status === 'success' && response.portfolio
       ? Object.fromEntries(response.portfolio.assets.map(a => [a.symbol, a]))
@@ -252,12 +268,23 @@ export const PortfolioAssetsCard: React.FC<PortfolioAssetsCardProps> = ({
         style={{ borderBottomColor: 'rgb(var(--border))' }}
       >
         <div className="flex items-center justify-between">
-          <h3
-            className="text-base font-semibold"
-            style={{ color: 'rgb(var(--fg-default))' }}
-          >
-            {t('portfolio.new_portfolio', 'Новый Портфель')}
-          </h3>
+          <div className="flex items-center gap-3">
+            <h3
+              className="text-base font-semibold"
+              style={{ color: 'rgb(var(--fg-default))' }}
+            >
+              {t('portfolio.new_portfolio', 'Новый Портфель')}
+            </h3>
+            
+            {/* Stale data and quote asset badges */}
+            {FEATURE_FLAGS.STATE_API && 'isStale' in portfolioQuery && (
+              <StaleDataBadge
+                isStale={(portfolioQuery as any).isStale || false}
+                timeAgo={(portfolioQuery as any).timeAgo}
+                quoteAsset={response?.portfolio?.quote_currency}
+              />
+            )}
+          </div>
           <div className="flex items-center gap-3">
             {totalAssets > maxItems && (
               <>

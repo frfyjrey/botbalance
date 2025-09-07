@@ -6,7 +6,8 @@ import type {
 } from '@tanstack/react-query';
 
 import { apiClient } from '@shared/lib/api';
-import { QUERY_KEYS } from '@shared/config/constants';
+import { QUERY_KEYS, FEATURE_FLAGS } from '@shared/config/constants';
+import { parsePortfolioError, formatTimeAgo, isDataStale } from '@shared/lib/portfolio-errors';
 import type {
   PortfolioSummaryResponse,
   PortfolioStateResponse,
@@ -17,9 +18,19 @@ import { portfolioStateToSummary } from './model';
 /**
  * Hook to fetch user's portfolio summary with NAV and asset allocations
  */
+/**
+ * @deprecated Use usePortfolioData or usePortfolioDataWithErrors instead.
+ * This hook will be removed in a future version.
+ */
 export const usePortfolioSummary = (
   options?: Partial<UseQueryOptions<PortfolioSummaryResponse, Error>>,
 ) => {
+  if (process.env.NODE_ENV !== 'production') {
+    console.warn(
+      '⚠️  usePortfolioSummary is deprecated. Use usePortfolioData or usePortfolioDataWithErrors instead.'
+    );
+  }
+  
   return useQuery({
     queryKey: [QUERY_KEYS.PORTFOLIO_SUMMARY],
     queryFn: () => apiClient.getPortfolioSummary(),
@@ -157,4 +168,56 @@ export const usePortfolioData = (
     isLoading: stateQuery.isLoading,
     isError: stateQuery.isError,
   } as UseQueryResult<PortfolioSummaryResponse, Error>;
+};
+
+/**
+ * Enhanced portfolio data hook with comprehensive error handling and stale detection
+ */
+export const usePortfolioDataWithErrors = (
+  params?: { connector_id?: number },
+  options?: Partial<UseQueryOptions<PortfolioSummaryResponse, Error>>,
+) => {
+  const stateQuery = usePortfolioState(params, {
+    enabled: FEATURE_FLAGS.STATE_API, // Controlled by feature flag
+    retry: (failureCount, error) => {
+      const parsedError = parsePortfolioError(error);
+      // Don't retry certain errors
+      if (['NO_STATE', 'NO_ACTIVE_STRATEGY', 'TOO_MANY_REQUESTS'].includes(parsedError.errorType || '')) {
+        return false;
+      }
+      return failureCount < 2;
+    },
+    retryDelay: 1000,
+    ...options,
+  });
+
+  // Parse error details
+  const errorDetails = parsePortfolioError(stateQuery.error);
+
+  // Check if data is stale
+  const timestamp = stateQuery.data?.state?.ts;
+  const isStale = timestamp ? isDataStale(timestamp) : false;
+  const timeAgo = timestamp ? formatTimeAgo(timestamp) : undefined;
+
+  return {
+    ...stateQuery,
+    // Convert successful state to summary format
+    data: stateQuery.data?.state ? {
+      status: 'success' as const,
+      portfolio: portfolioStateToSummary(stateQuery.data.state),
+      message: '✨ Using PortfolioState API',
+    } : undefined,
+    
+    // Enhanced error information
+    errorDetails,
+    
+    // Stale data information
+    isStale,
+    timeAgo,
+    timestamp,
+    
+    // Convenience flags
+    hasData: Boolean(stateQuery.data?.state),
+    isEmpty: Boolean(stateQuery.data?.state && !stateQuery.data.state.positions),
+  };
 };

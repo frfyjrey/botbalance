@@ -108,3 +108,8 @@ export const ENV = {
 
 export const IS_DEV = import.meta.env.DEV;
 export const IS_PROD = import.meta.env.PROD;
+
+// Feature Flags
+export const FEATURE_FLAGS = {
+  STATE_API: import.meta.env.VITE_FRONTEND_STATE_API === 'true',
+} as const;

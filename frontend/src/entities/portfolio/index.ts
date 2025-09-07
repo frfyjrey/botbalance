@@ -1,10 +1,12 @@
 export * from './api';
 export * from './model';
 export {
-  usePortfolioSummary,
   usePortfolioState,
   useRefreshPortfolioState,
   usePortfolioData,
+  usePortfolioDataWithErrors,
+  // DEPRECATED: usePortfolioSummary is deprecated, use usePortfolioData instead
+  usePortfolioSummary,
 } from './api';
 export type {
   PortfolioAsset,

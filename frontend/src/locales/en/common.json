@@ -31,5 +31,17 @@
   "undo": "Undo",
   "redo": "Redo",
   "select_all": "Select All",
-  "deselect_all": "Deselect All"
+  "deselect_all": "Deselect All",
+  
+  "errors": {
+    "portfolio": {
+      "no_state": "No portfolio data available. Click Refresh to load.",
+      "no_active_strategy": "No active strategy found for this connector.",
+      "pricing_error": "Unable to get prices for: {{assets}}",
+      "rate_limit": "Too many requests. Please try again in a few seconds.",
+      "refresh_cta": "Click Refresh to update portfolio data",
+      "refresh_failed": "Failed to refresh portfolio: {{message}}"
+    },
+    "stale_data": "Data is {{time}} old"
+  }
 }
