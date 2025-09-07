@@ -6,6 +6,7 @@ import asyncio
 import logging
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -14,8 +15,15 @@ from rest_framework.response import Response
 
 from botbalance.exchanges.models import ExchangeAccount
 
+from .constants import ALL_ALLOCATION_ASSETS, QUOTE_ASSET_SYMBOLS
 from .models import Order, RebalanceExecution, Strategy
-from .rebalance_service import rebalance_service
+from .rebalance_service import (
+    NoActiveStrategyError,
+    NoPricingDataError,
+    RateLimitExceededError,
+    RebalanceError,
+    rebalance_service,
+)
 from .serializers import (
     RebalancePlanSerializer,
     StrategyCreateRequestSerializer,
@@ -48,7 +56,7 @@ def prepare_exchange_data_for_json(exchange_order_dict: dict) -> dict:
     return result
 
 
-@api_view(["GET", "POST"])
+@api_view(["GET", "POST", "PATCH", "DELETE"])
 @permission_classes([IsAuthenticated])
 def user_strategy_view(request):
     """Manage user's trading strategy."""
@@ -57,6 +65,10 @@ def user_strategy_view(request):
             return _get_user_strategy(request)
         elif request.method == "POST":
             return _create_or_update_strategy(request)
+        elif request.method == "PATCH":
+            return _patch_strategy(request)
+        elif request.method == "DELETE":
+            return _delete_strategy(request)
     except Exception as e:
         logger.error(f"Error in user_strategy_view: {e}", exc_info=True)
         return Response(
@@ -126,16 +138,40 @@ def _create_or_update_strategy(request):
         )
 
         if strategy_serializer.is_valid():
-            strategy = strategy_serializer.save()
-            return Response(
-                {
-                    "status": "success",
-                    "message": "Strategy updated successfully",
-                    "strategy": StrategySerializer(
-                        strategy, context={"request": request}
-                    ).data,
-                }
-            )
+            try:
+                strategy = strategy_serializer.save()
+                # Validate model constraints (including base currency in allocations)
+                strategy.full_clean()
+                return Response(
+                    {
+                        "status": "success",
+                        "message": "Strategy updated successfully",
+                        "strategy": StrategySerializer(
+                            strategy, context={"request": request}
+                        ).data,
+                    }
+                )
+            except ValidationError as e:
+                error_message = "Validation failed"
+                errors = {}
+
+                if hasattr(e, "message_dict"):
+                    errors = e.message_dict
+                elif hasattr(e, "messages"):
+                    error_message = "Validation failed: multiple errors"
+                else:
+                    # Log the exception and avoid exposing details to user
+                    logger.error("Strategy validation exception: %s", e, exc_info=True)
+                    error_message = "Validation failed. Please check your input."
+
+                return Response(
+                    {
+                        "status": "error",
+                        "message": error_message,
+                        "errors": errors,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
         else:
             return Response(
                 {
@@ -164,17 +200,45 @@ def _create_or_update_strategy(request):
         )
 
         if strategy_serializer.is_valid():
-            strategy = strategy_serializer.save()
-            return Response(
-                {
-                    "status": "success",
-                    "message": "Strategy created successfully",
-                    "strategy": StrategySerializer(
-                        strategy, context={"request": request}
-                    ).data,
-                },
-                status=status.HTTP_201_CREATED,
-            )
+            try:
+                strategy = strategy_serializer.save()
+                # Validate model constraints (including base currency in allocations)
+                strategy.full_clean()
+                return Response(
+                    {
+                        "status": "success",
+                        "message": "Strategy created successfully",
+                        "strategy": StrategySerializer(
+                            strategy, context={"request": request}
+                        ).data,
+                    },
+                    status=status.HTTP_201_CREATED,
+                )
+            except ValidationError as e:
+                # Delete the strategy if validation fails
+                if strategy and strategy.pk:
+                    strategy.delete()
+
+                error_message = "Validation failed"
+                errors = {}
+
+                if hasattr(e, "message_dict"):
+                    errors = e.message_dict
+                elif hasattr(e, "messages"):
+                    error_message = "Validation failed: multiple errors"
+                else:
+                    # Log the exception and avoid exposing details to user
+                    logger.error("Strategy validation exception: %s", e, exc_info=True)
+                    error_message = "Validation failed. Please check your input."
+
+                return Response(
+                    {
+                        "status": "error",
+                        "message": error_message,
+                        "errors": errors,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
         else:
             return Response(
                 {
@@ -184,6 +248,112 @@ def _create_or_update_strategy(request):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+
+def _patch_strategy(request):
+    """Partially update user's existing strategy (e.g., toggle is_active)."""
+    # Get user's existing strategy
+    try:
+        strategy = Strategy.objects.get(user=request.user)
+    except Strategy.DoesNotExist:
+        return Response(
+            {
+                "status": "error",
+                "message": "No strategy found. Create a strategy first.",
+                "error_code": "STRATEGY_NOT_FOUND",
+            },
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    # Update strategy with partial data
+    serializer = StrategyUpdateRequestSerializer(data=request.data, partial=True)
+    if not serializer.is_valid():
+        return Response(
+            {
+                "status": "error",
+                "message": "Invalid strategy data",
+                "errors": serializer.errors,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Use StrategySerializer to update the strategy
+    strategy_serializer = StrategySerializer(
+        strategy,
+        data=serializer.validated_data,
+        partial=True,
+        context={"request": request},
+    )
+
+    if strategy_serializer.is_valid():
+        try:
+            strategy = strategy_serializer.save()
+            # Validate model constraints (including base currency in allocations)
+            strategy.full_clean()
+            return Response(
+                {
+                    "status": "success",
+                    "message": "Strategy updated successfully",
+                    "strategy": StrategySerializer(
+                        strategy, context={"request": request}
+                    ).data,
+                },
+                status=status.HTTP_200_OK,
+            )
+        except ValidationError as e:
+            error_message = "Validation failed"
+            errors = {}
+
+            if hasattr(e, "message_dict"):
+                errors = e.message_dict
+            elif hasattr(e, "messages"):
+                error_message = "; ".join(e.messages)
+            else:
+                error_message = str(e)
+
+            return Response(
+                {
+                    "status": "error",
+                    "message": error_message,
+                    "errors": errors,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+    else:
+        return Response(
+            {
+                "status": "error",
+                "message": "Failed to update strategy",
+                "errors": strategy_serializer.errors,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+
+def _delete_strategy(request):
+    """Delete user's strategy and all related data."""
+    try:
+        strategy = Strategy.objects.get(user=request.user)
+    except Strategy.DoesNotExist:
+        return Response(
+            {
+                "status": "error",
+                "message": "No strategy found.",
+                "error_code": "STRATEGY_NOT_FOUND",
+            },
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    strategy_name = strategy.name
+    strategy.delete()
+
+    return Response(
+        {
+            "status": "success",
+            "message": f"Strategy '{strategy_name}' deleted successfully",
+        },
+        status=status.HTTP_200_OK,
+    )
 
 
 @api_view(["GET"])
@@ -210,6 +380,17 @@ def rebalance_plan_view(request):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        # Check if strategy is active
+        if not strategy.is_active:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Strategy is not active. Please activate your strategy first.",
+                    "error_code": "STRATEGY_NOT_ACTIVE",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         # Check if strategy has valid allocations
         if not strategy.is_allocation_valid():
             return Response(
@@ -221,19 +402,27 @@ def rebalance_plan_view(request):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Get user's exchange account
-        exchange_account = ExchangeAccount.objects.filter(
-            user=request.user, is_active=True
-        ).first()
+        # Get strategy's exchange account
+        exchange_account = strategy.exchange_account
 
         if not exchange_account:
             return Response(
                 {
                     "status": "error",
-                    "message": "No active exchange account found. Please add an exchange account first.",
+                    "message": "Strategy has no exchange account assigned",
                     "error_code": "NO_EXCHANGE_ACCOUNT",
                 },
-                status=status.HTTP_404_NOT_FOUND,
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not exchange_account.is_active:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Strategy's exchange account is inactive",
+                    "error_code": "INACTIVE_EXCHANGE_ACCOUNT",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Calculate rebalance plan
@@ -241,11 +430,55 @@ def rebalance_plan_view(request):
             request.query_params.get("force_refresh", "false").lower() == "true"
         )
 
-        plan = asyncio.run(
-            rebalance_service.calculate_rebalance_plan(
-                strategy, exchange_account, force_refresh
+        try:
+            logger.info(
+                f"Calling calculate_rebalance_plan for strategy: {strategy.name}"
             )
-        )
+            plan = asyncio.run(
+                rebalance_service.calculate_rebalance_plan(
+                    strategy, exchange_account, force_refresh
+                )
+            )
+            logger.info("Successfully calculated rebalance plan")
+        except NoPricingDataError as e:
+            logger.warning(f"Caught NoPricingDataError: {e}")
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Rebalance operation failed",
+                    "error_code": e.error_code,
+                },
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
+        except NoActiveStrategyError as e:
+            logger.warning(f"Caught NoActiveStrategyError: {e} - returning HTTP 409")
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Rebalance operation failed",
+                    "error_code": e.error_code,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        except RateLimitExceededError as e:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Rebalance operation failed",
+                    "error_code": e.error_code,
+                    "retry_after_seconds": 5,  # Suggest retry after cooldown
+                },
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+        except RebalanceError as e:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Rebalance operation failed",
+                    "error_code": e.error_code,
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
         if not plan:
             return Response(
@@ -261,28 +494,32 @@ def rebalance_plan_view(request):
         plan_data = {
             "strategy_id": plan.strategy_id,
             "strategy_name": plan.strategy_name,
-            "portfolio_nav": plan.portfolio_nav,
+            "portfolio_nav": round(plan.portfolio_nav, 2),
             "quote_currency": plan.quote_currency,
             "actions": [
                 {
                     "asset": action.asset,
                     "action": action.action,
-                    "current_percentage": action.current_percentage,
-                    "target_percentage": action.target_percentage,
-                    "current_value": action.current_value,
-                    "target_value": action.target_value,
-                    "delta_value": action.delta_value,
-                    "order_amount": action.order_amount,
-                    "order_volume": action.order_volume,
-                    "order_price": action.order_price,
-                    "market_price": action.market_price,
-                    "normalized_order_volume": action.normalized_order_volume,
-                    "normalized_order_price": action.normalized_order_price,
-                    "order_amount_normalized": action.order_amount_normalized,
+                    "current_percentage": round(action.current_percentage, 2),
+                    "target_percentage": round(action.target_percentage, 2),
+                    "current_value": round(action.current_value, 2),
+                    "target_value": round(action.target_value, 2),
+                    "delta_value": round(action.delta_value, 2),
+                    "order_amount": round(action.order_amount, 2)
+                    if action.order_amount is not None
+                    else None,
+                    "order_volume": action.order_volume,  # 8 decimal places - ok
+                    "order_price": action.order_price,  # 8 decimal places - ok
+                    "market_price": action.market_price,  # 8 decimal places - ok
+                    "normalized_order_volume": action.normalized_order_volume,  # 8 decimal places - ok
+                    "normalized_order_price": action.normalized_order_price,  # 8 decimal places - ok
+                    "order_amount_normalized": round(action.order_amount_normalized, 2)
+                    if action.order_amount_normalized is not None
+                    else None,
                 }
                 for action in plan.actions
             ],
-            "total_delta": plan.total_delta,
+            "total_delta": round(plan.total_delta, 2),
             "orders_needed": plan.orders_needed,
             "rebalance_needed": plan.rebalance_needed,
             "calculated_at": plan.calculated_at,
@@ -447,11 +684,52 @@ def rebalance_execute_view(request):
 
         # Get rebalance plan
         force_refresh_prices = request.data.get("force_refresh_prices", False)
-        rebalance_plan = asyncio.run(
-            rebalance_service.calculate_rebalance_plan(
-                strategy, exchange_account, force_refresh_prices
+        try:
+            rebalance_plan = asyncio.run(
+                rebalance_service.calculate_rebalance_plan(
+                    strategy, exchange_account, force_refresh_prices
+                )
             )
-        )
+        except NoPricingDataError as e:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Rebalance operation failed",
+                    "error_code": e.error_code,
+                },
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
+        except NoActiveStrategyError as e:
+            logger.warning(
+                f"Caught NoActiveStrategyError in execute: {e} - returning HTTP 409"
+            )
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Rebalance operation failed",
+                    "error_code": e.error_code,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        except RateLimitExceededError as e:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Rebalance operation failed",
+                    "error_code": e.error_code,
+                    "retry_after_seconds": 5,  # Suggest retry after cooldown
+                },
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+        except RebalanceError as e:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Rebalance operation failed",
+                    "error_code": e.error_code,
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
         if not rebalance_plan or not rebalance_plan.actions:
             return Response(
@@ -497,46 +775,40 @@ def rebalance_execute_view(request):
             # Use 30-second tick for idempotent client ids
             ts_tick = int(floor(timezone.now().timestamp() / 30)) * 30
 
-            for index, action in enumerate(rebalance_plan.actions):
+            for action in rebalance_plan.actions:
                 # Skip orders for quote currency pairs like USDTUSDT
                 if action.asset == str(rebalance_plan.quote_currency):
                     logger.info(
                         f"Skipping order for quote asset {action.asset} (no self-quote trades)"
                     )
                     continue
-                if abs(action.delta_value) < strategy.min_delta_quote:
+                # Calculate minimum delta threshold for this action based on percentage
+                min_delta_threshold = action.target_value * strategy.min_delta_pct / 100
+                if abs(action.delta_value) < min_delta_threshold:
                     logger.info(
-                        f"Skipping {action.asset} delta {action.delta_value} below minimum {strategy.min_delta_quote}"
+                        f"Skipping {action.asset} delta {action.delta_value} below minimum threshold {min_delta_threshold} ({strategy.min_delta_pct}%)"
                     )
                     continue
 
-                # Determine order parameters
+                # Use normalized order parameters from plan (no recalculation)
                 symbol = action.asset + "USDT"  # Assuming USDT pairs for now
                 side = "buy" if action.delta_value > 0 else "sell"
-                # Use order_amount from Engine (capped by order_size_pct)
-                quote_amount = (
-                    abs(action.order_amount)
-                    if action.order_amount is not None
-                    else abs(action.delta_value)
-                )
 
-                # Use precomputed order_price from plan (Engine logic: buy below, sell above)
-                limit_price = action.order_price
-                if not limit_price:
-                    # Fallback: compute from market price and step pct (buy below, sell above)
-                    market_price = action.market_price
-                    if not market_price:
-                        logger.warning(f"No market price for {symbol}, skipping order")
-                        continue
-                    step = strategy.order_step_pct / Decimal("100")
-                    limit_price = (
-                        market_price * (Decimal("1") - step)
-                        if side == "buy"
-                        else market_price * (Decimal("1") + step)
+                # Use already normalized values from rebalance plan
+                if (
+                    action.normalized_order_price is None
+                    or action.order_amount_normalized is None
+                ):
+                    logger.warning(
+                        f"Missing normalized order data for {symbol}, skipping order"
                     )
+                    continue
 
-                # Generate client order ID for idempotency
-                coid_seed = f"{request.user.id}:{symbol}:{side}:{ts_tick}:{index}"
+                limit_price = action.normalized_order_price
+                quote_amount = action.order_amount_normalized
+
+                # Generate client order ID for idempotency using normalized values
+                coid_seed = f"{request.user.id}:{symbol}:{side}:{limit_price}:{quote_amount}:{ts_tick}"
                 client_order_id = hashlib.sha1(coid_seed.encode()).hexdigest()[:20]
 
                 # Place order through exchange adapter
@@ -608,6 +880,53 @@ def rebalance_execute_view(request):
                     }
                 )
 
+            # NEW: Update PortfolioState then create snapshot after order execution (Stage B integration)
+            try:
+                from botbalance.exchanges.portfolio_service import portfolio_service
+                from botbalance.exchanges.snapshot_service import snapshot_service
+
+                # 1. Update PortfolioState with order_fill source
+                logger.info(
+                    f"Updating PortfolioState after order execution for {exchange_account.name}"
+                )
+                portfolio_state, error_code = asyncio.run(
+                    portfolio_service.upsert_portfolio_state(
+                        exchange_account,
+                        source="order_fill",
+                    )
+                )
+
+                if error_code == "ERROR_PRICING":
+                    logger.warning(
+                        f"Cannot create snapshot for user {sanitized_user}: pricing data unavailable after order execution"
+                    )
+                elif error_code:
+                    logger.warning(
+                        f"Cannot create snapshot for user {sanitized_user}: PortfolioState error: {error_code}"
+                    )
+                elif portfolio_state:
+                    # 2. Create snapshot from updated State
+                    snapshot = asyncio.run(
+                        snapshot_service.create_snapshot_from_state(
+                            user=request.user,
+                            exchange_account=exchange_account,
+                            source="order_fill",  # After order execution
+                            strategy_version=strategy.id,
+                        )
+                    )
+                    if snapshot:
+                        logger.info(
+                            f"Created post-rebalance snapshot {snapshot.id} for user {sanitized_user}"
+                        )
+                    else:
+                        logger.warning(
+                            f"Failed to create post-rebalance snapshot for user {sanitized_user}"
+                        )
+
+            except Exception as e:
+                # Don't fail rebalance response if snapshot creation fails
+                logger.warning(f"Post-rebalance snapshot creation failed: {e}")
+
             return Response(
                 {
                     "status": "success",
@@ -644,6 +963,38 @@ def rebalance_execute_view(request):
                 "status": "error",
                 "message": "Internal server error occurred during rebalance execution",
                 "error_code": "REBALANCE_ERROR",
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def strategy_constants_view(request):
+    """
+    Get supported assets and currencies for strategy configuration.
+
+    This endpoint provides the frontend with the list of supported
+    quote assets (base currencies) and allocation assets.
+    """
+    try:
+        return Response(
+            {
+                "status": "success",
+                "constants": {
+                    "quote_assets": QUOTE_ASSET_SYMBOLS,
+                    "allocation_assets": ALL_ALLOCATION_ASSETS,
+                },
+            },
+            status=status.HTTP_200_OK,
+        )
+    except Exception as e:
+        logger.error(f"Error in strategy_constants_view: {e}", exc_info=True)
+        return Response(
+            {
+                "status": "error",
+                "message": "Failed to retrieve strategy constants",
+                "error_code": "CONSTANTS_ERROR",
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )

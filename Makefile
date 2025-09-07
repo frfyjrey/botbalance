@@ -70,12 +70,31 @@ backend-dev: ## Start Django development server
 		DJANGO_SETTINGS_MODULE=$(BACKEND_APP).settings.local \
 		uv run python manage.py runserver 0.0.0.0:8000
 
+# Общие переменные для polling в dev среде
+POLL_ENV = DJANGO_SETTINGS_MODULE=$(BACKEND_APP).settings.local EXCHANGE_ENV=live ENABLE_ORDER_POLLING=true
+
 .PHONY: worker
 worker: ## Start Celery worker
 	@echo "$(MAGENTA)⚙️  Starting Celery worker...$(RESET)"
 	@cd $(BACKEND_DIR) && \
-		DJANGO_SETTINGS_MODULE=$(BACKEND_APP).settings.local \
-		uv run celery -A $(BACKEND_APP) worker --loglevel=info
+		$(POLL_ENV) uv run celery -A $(BACKEND_APP) worker --loglevel=info
+
+.PHONY: beat
+beat: ## Start Celery beat scheduler (for order polling)
+	@echo "$(MAGENTA)📅 Starting Celery beat scheduler...$(RESET)"
+	@cd $(BACKEND_DIR) && \
+		$(POLL_ENV) uv run celery -A $(BACKEND_APP) beat --loglevel=info
+
+.PHONY: beat-entrypoint
+beat-entrypoint: ## Start beat entrypoint (production-like with HTTP health)
+	@echo "$(MAGENTA)📅 Starting beat entrypoint...$(RESET)"
+	@cd $(BACKEND_DIR) && \
+		$(POLL_ENV) uv run python beat_entrypoint.py
+
+.PHONY: dev-with-polling
+dev-with-polling: ## Start full dev environment with order polling (DB + API + Worker + Beat + Frontend)
+	@echo "$(BLUE)🚀 Starting development environment with order polling...$(RESET)"
+	@make -j 5 services backend-dev worker beat frontend-dev
 
 .PHONY: frontend-dev
 frontend-dev: ## Start React development server

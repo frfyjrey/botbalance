@@ -74,3 +74,10 @@ export function formatCurrencyUSD(value: number, fractionDigits = 2): string {
     maximumFractionDigits: fractionDigits,
   });
 }
+
+// Display helper: show plain "0" for any zero-like numeric string (e.g. "0E-8", "0.00000000")
+export function formatZeroAware(value: string | number): string {
+  const n = Number(value);
+  if (Number.isFinite(n) && n === 0) return '0';
+  return String(value);
+}

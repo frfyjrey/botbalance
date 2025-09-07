@@ -19,7 +19,7 @@ class StrategyAdmin(admin.ModelAdmin):
         "active_badge",
         "order_size_pct",
         "order_step_pct",
-        "min_delta_quote",
+        "min_delta_pct",
         "total_allocation",
         "allocations_count",
         "last_rebalanced_at",
@@ -38,7 +38,7 @@ class StrategyAdmin(admin.ModelAdmin):
         (
             "Trading Parameters",
             {
-                "fields": ["order_size_pct", "order_step_pct", "min_delta_quote"],
+                "fields": ["order_size_pct", "order_step_pct", "min_delta_pct"],
                 "description": "Core parameters for order placement and rebalancing",
             },
         ),

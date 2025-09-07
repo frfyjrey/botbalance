@@ -9,4 +9,6 @@ export {
   hasBalances,
   getTotalValue,
   getBalancesCount,
+  isFallbackData,
+  getDataFreshnessMessage,
 } from './model';

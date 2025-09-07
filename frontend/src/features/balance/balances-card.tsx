@@ -1,4 +1,6 @@
 import { useTranslation } from 'react-i18next';
+import { useState } from 'react';
+import { Button } from '@shared/ui/Button';
 import {
   useBalances,
   formatCurrency,
@@ -6,6 +8,7 @@ import {
   getAssetDisplayName,
   sortBalancesByValue,
   getTotalValue,
+  getDataFreshnessMessage,
 } from '@entities/balance';
 import type { Balance } from '@shared/config/types';
 
@@ -16,6 +19,7 @@ interface BalancesCardProps {
 export const BalancesCard = ({ className }: BalancesCardProps) => {
   const { t } = useTranslation('dashboard');
   const { data: balancesData, isLoading, isError, error } = useBalances();
+  const [showAll, setShowAll] = useState(false);
 
   // Check if error is "no exchange accounts" (404)
   const isNoAccounts = error && 'status' in error && error.status === 404;
@@ -244,6 +248,10 @@ export const BalancesCard = ({ className }: BalancesCardProps) => {
 
   const totalValue = getTotalValue(balancesData);
   const sortedBalances = sortBalancesByValue(balancesData.balances);
+  const totalAssets = sortedBalances.length;
+  const visibleBalances = showAll
+    ? sortedBalances
+    : sortedBalances.slice(0, 10);
 
   return (
     <div className={`card-github ${className}`}>
@@ -258,17 +266,49 @@ export const BalancesCard = ({ className }: BalancesCardProps) => {
           >
             {t('balances.portfolio')}
           </h3>
-          {balancesData.exchange_account && (
-            <span
-              className="px-2 py-1 rounded text-xs font-medium"
-              style={{
-                backgroundColor: 'rgb(var(--alert-info-bg))',
-                color: 'rgb(var(--fg-default))',
-              }}
-            >
-              {balancesData.exchange_account}
-            </span>
-          )}
+          <div className="flex items-center gap-3">
+            {totalAssets > 10 && (
+              <>
+                <span
+                  className="text-xs"
+                  style={{ color: 'rgb(var(--fg-muted))' }}
+                >
+                  {showAll
+                    ? t('balances.showing_all', 'Показаны все {{total}}', {
+                        total: totalAssets,
+                      })
+                    : t(
+                        'balances.showing_assets',
+                        'Показано {{shown}} из {{total}}',
+                        {
+                          shown: 10,
+                          total: totalAssets,
+                        },
+                      )}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowAll(prev => !prev)}
+                >
+                  {showAll
+                    ? t('portfolio.show_less', 'Скрыть')
+                    : t('portfolio.show_all', 'Показать все')}
+                </Button>
+              </>
+            )}
+            {balancesData.exchange_account && (
+              <span
+                className="px-2 py-1 rounded text-xs font-medium"
+                style={{
+                  backgroundColor: 'rgb(var(--alert-info-bg))',
+                  color: 'rgb(var(--fg-default))',
+                }}
+              >
+                {balancesData.exchange_account}
+              </span>
+            )}
+          </div>
         </div>
         <div className="mt-2">
           <div
@@ -277,15 +317,36 @@ export const BalancesCard = ({ className }: BalancesCardProps) => {
           >
             {formatCurrency(totalValue)}
           </div>
-          <p className="text-sm" style={{ color: 'rgb(var(--fg-muted))' }}>
-            {t('balances.total_value')}
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="text-sm" style={{ color: 'rgb(var(--fg-muted))' }}>
+              {t('balances.total_value')}
+            </p>
+            {balancesData.timestamp && (
+              <p className="text-xs" style={{ color: 'rgb(var(--fg-muted))' }}>
+                {new Date(balancesData.timestamp).toLocaleString()}
+              </p>
+            )}
+          </div>
         </div>
       </div>
 
+      {/* API Status Warning */}
+      {balancesData && getDataFreshnessMessage(balancesData) && (
+        <div
+          className="mx-4 mb-4 p-3 rounded"
+          style={{
+            backgroundColor: 'rgb(var(--alert-warn-bg))',
+            borderColor: 'rgb(var(--alert-warn-border))',
+            color: 'rgb(var(--fg-default))',
+          }}
+        >
+          <div className="text-xs">{getDataFreshnessMessage(balancesData)}</div>
+        </div>
+      )}
+
       <div className="p-4">
         <div className="space-y-3">
-          {sortedBalances.map(balance => {
+          {visibleBalances.map(balance => {
             const percentage = getBalancePercentage(balance, totalValue);
             return (
               <div key={balance.asset} className="flex items-center space-x-3">
@@ -343,21 +404,6 @@ export const BalancesCard = ({ className }: BalancesCardProps) => {
             );
           })}
         </div>
-
-        {balancesData.timestamp && (
-          <div
-            className="mt-4 pt-4"
-            style={{ borderTop: '1px solid rgb(var(--border))' }}
-          >
-            <p
-              className="text-xs text-center"
-              style={{ color: 'rgb(var(--fg-muted))' }}
-            >
-              {t('balances.last_updated')}:{' '}
-              {new Date(balancesData.timestamp).toLocaleString()}
-            </p>
-          </div>
-        )}
       </div>
     </div>
   );

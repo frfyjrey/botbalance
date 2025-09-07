@@ -4,8 +4,6 @@ Exchange adapter factory.
 Creates exchange adapter instances based on exchange type.
 """
 
-import os
-
 from .adapters import ExchangeAdapter
 from .binance_adapter import BinanceAdapter
 from .exceptions import ExchangeError
@@ -22,11 +20,11 @@ class ExchangeAdapterFactory:
     # Registry of available adapters
     ADAPTERS: dict[str, type[ExchangeAdapter]] = {
         "binance": BinanceAdapter,
-        "okx": OKXAdapter,  # Disabled until Step 9
+        "okx": OKXAdapter,
     }
 
     # Feature flags (can be configured via environment variables)
-    ENABLED_EXCHANGES = {"binance"}  # Only Binance enabled for MVP
+    ENABLED_EXCHANGES = {"binance", "okx"}  # Both exchanges enabled
 
     @classmethod
     def create_adapter(
@@ -35,6 +33,7 @@ class ExchangeAdapterFactory:
         api_key: str,
         api_secret: str,
         testnet: bool | None = None,
+        passphrase: str | None = None,
     ) -> ExchangeAdapter:
         """
         Create exchange adapter instance.
@@ -43,7 +42,8 @@ class ExchangeAdapterFactory:
             exchange: Exchange name ("binance" | "okx")
             api_key: API key
             api_secret: API secret
-            testnet: Use testnet (None = auto-detect from environment)
+            testnet: Use testnet (default: False = mainnet)
+            passphrase: API passphrase (required for OKX)
 
         Returns:
             Exchange adapter instance
@@ -59,13 +59,19 @@ class ExchangeAdapterFactory:
                 f"Exchange '{exchange}' not enabled in current configuration"
             )
 
-        # Auto-detect testnet from environment if not specified
+        # Default to mainnet if testnet not specified
         if testnet is None:
-            exchange_env = os.getenv("EXCHANGE_ENV", "mock").lower()
-            testnet = exchange_env == "testnet"
+            testnet = False
 
         adapter_class = cls.ADAPTERS[exchange]
-        return adapter_class(api_key=api_key, api_secret=api_secret, testnet=testnet)
+
+        # All adapters now accept passphrase parameter
+        return adapter_class(
+            api_key=api_key,
+            api_secret=api_secret,
+            testnet=testnet,
+            passphrase=passphrase,
+        )
 
     @classmethod
     def get_supported_exchanges(cls) -> list[str]:

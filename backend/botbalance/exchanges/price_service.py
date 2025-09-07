@@ -7,6 +7,7 @@ and fallback mechanisms for cryptocurrency prices.
 
 import asyncio
 import logging
+import time
 from datetime import datetime
 from decimal import Decimal
 
@@ -103,7 +104,7 @@ class PriceService:
         try:
             adapter = self.adapter_factory.create_adapter(
                 exchange="binance",
-                api_key="",  # Mock for Step 2
+                api_key="",  # Public price endpoints don't require signing
                 api_secret="",
             )
 
@@ -162,6 +163,99 @@ class PriceService:
             # Small delay between batches to be respectful to API
             if i + self.BATCH_SIZE < len(symbols):
                 await asyncio.sleep(0.1)
+
+        return results
+
+    async def get_prices_batch_with_adapter(
+        self, adapter, symbols: list[str]
+    ) -> dict[str, Decimal | None]:
+        """
+        Get prices for multiple symbols using specific exchange adapter.
+
+        This is the new interface for PortfolioState architecture.
+        If adapter has native batch support, use it. Otherwise, fall back to
+        safe sequential calls with backoff.
+
+        Args:
+            adapter: Exchange adapter instance
+            symbols: List of trading pair symbols
+
+        Returns:
+            Dictionary mapping symbols to prices
+        """
+        start_time = time.time()
+        symbols = [s.upper() for s in symbols]
+        symbol_count = len(symbols)
+        adapter_name = (
+            adapter.exchange()
+            if hasattr(adapter, "exchange")
+            else adapter.__class__.__name__.lower()
+        )
+        method_used = "unknown"
+        error_code = None
+        results: dict[str, Decimal | None] = {}
+
+        try:
+            # Check if adapter has native batch pricing support
+            if hasattr(adapter, "get_prices_batch"):
+                try:
+                    method_used = "native"
+                    logger.debug(f"Using native batch pricing from {adapter_name}")
+                    results = await adapter.get_prices_batch(symbols)
+                except Exception as e:
+                    error_code = e.__class__.__name__
+                    logger.warning(
+                        f"Native batch pricing failed for {adapter_name}: {e}"
+                    )
+                    # Fall through to sequential approach
+                    method_used = "fallback"
+            else:
+                method_used = "fallback"
+
+            # Fallback: safe sequential calls with rate limiting
+            if method_used == "fallback":
+                logger.debug(
+                    f"Using sequential pricing for {adapter_name}, {symbol_count} symbols"
+                )
+
+                for i, symbol in enumerate(symbols):
+                    try:
+                        price = await adapter.get_price(symbol)
+                        results[symbol] = price
+
+                        # Rate limiting: small delay between calls to be respectful
+                        if i < len(symbols) - 1:  # Don't sleep after last symbol
+                            await asyncio.sleep(0.05)  # 50ms between calls
+
+                    except Exception as e:
+                        if error_code is None:  # Only set first error
+                            error_code = e.__class__.__name__
+                        logger.warning(
+                            f"Failed to get price for {symbol} from {adapter_name}: {e}"
+                        )
+                        results[symbol] = None
+
+        except Exception as e:
+            error_code = e.__class__.__name__
+            logger.error(f"Critical error in batch pricing for {adapter_name}: {e}")
+            # Return empty results on critical error
+            results = dict.fromkeys(symbols)
+
+        finally:
+            # Calculate metrics
+            latency_ms = int((time.time() - start_time) * 1000)
+            successful_prices = len([p for p in results.values() if p is not None])
+            missing_prices_count = symbol_count - successful_prices
+
+            # Smart logging: info for high-impact operations, debug otherwise
+            should_log_info = latency_ms > 1000 or symbol_count > 10
+            log_level = logger.info if should_log_info else logger.debug
+
+            log_level(
+                f"Price batch metrics: count={symbol_count}, latency_ms={latency_ms}, "
+                f"adapter={adapter_name}, used={method_used}, "
+                f"missing_prices_count={missing_prices_count}, error_code={error_code or 'none'}"
+            )
 
         return results
 

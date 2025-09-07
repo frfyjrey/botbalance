@@ -3,7 +3,7 @@ import { formatCurrencyUSD, formatNumberEnUS } from '@shared/lib/utils';
 import { useTranslation } from 'react-i18next';
 
 // Using GitHub-style card design like BalancesCard
-import { usePortfolioSummary, type PortfolioAsset } from '@entities/portfolio';
+import { usePortfolioData, type PortfolioAsset } from '@entities/portfolio';
 
 interface AssetAllocationChartProps {
   className?: string;
@@ -93,7 +93,7 @@ export const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
   className,
 }) => {
   const { t } = useTranslation('dashboard');
-  const { data: response, isLoading, error } = usePortfolioSummary();
+  const { data: response, isLoading, error } = usePortfolioData();
 
   if (isLoading) {
     return (
@@ -124,12 +124,68 @@ export const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
     );
   }
 
+  // Empty state: no PortfolioState found (ERROR_NO_STATE)
   if (
-    error ||
     !response ||
-    response.status !== 'success' ||
-    !response.portfolio
+    (error &&
+      typeof error === 'object' &&
+      'status' in error &&
+      (error as { status: number }).status === 404)
   ) {
+    return (
+      <div className={`card-github ${className}`}>
+        <div
+          className="p-4 border-b"
+          style={{ borderBottomColor: 'rgb(var(--border))' }}
+        >
+          <h3
+            className="text-base font-semibold"
+            style={{ color: 'rgb(var(--fg-default))' }}
+          >
+            {t('portfolio.allocation_title', 'Asset Allocation')}
+          </h3>
+        </div>
+        <div className="p-6">
+          <div className="text-center py-12">
+            <div className="mb-4">
+              <div
+                className="w-16 h-16 mx-auto rounded-full flex items-center justify-center mb-3"
+                style={{ backgroundColor: 'rgb(var(--neutral-subtle))' }}
+              >
+                <svg
+                  className="w-8 h-8"
+                  style={{ color: 'rgb(var(--fg-muted))' }}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                  />
+                </svg>
+              </div>
+            </div>
+            <h4
+              className="text-base font-medium mb-2"
+              style={{ color: 'rgb(var(--fg-default))' }}
+            >
+              Portfolio State Not Found
+            </h4>
+            <p className="text-sm" style={{ color: 'rgb(var(--fg-muted))' }}>
+              Portfolio state not available. Complete setup in Dashboard to see
+              asset allocation.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Other errors (not 404)
+  if (error || response.status !== 'success' || !response.portfolio) {
     return (
       <div className={`card-github ${className}`}>
         <div
@@ -155,10 +211,7 @@ export const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
               {t('portfolio.chart_unavailable', 'Chart Unavailable')}
             </p>
             <p className="text-sm" style={{ color: 'rgb(var(--fg-muted))' }}>
-              {t(
-                'portfolio.chart_error_desc',
-                'Unable to display asset allocation',
-              )}
+              {error ? error.message : 'Unable to display asset allocation'}
             </p>
           </div>
         </div>

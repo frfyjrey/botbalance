@@ -13,6 +13,14 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils import timezone
 
+from botbalance.exchanges.models import ExchangeAccount
+
+from .constants import (
+    SUPPORTED_QUOTE_ASSETS,
+    is_valid_allocation_asset,
+    is_valid_quote_asset,
+)
+
 
 class Strategy(models.Model):
     """
@@ -22,10 +30,10 @@ class Strategy(models.Model):
     along with rebalancing parameters and risk management settings.
     """
 
-    user = models.OneToOneField(
+    user = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
-        related_name="strategy",
+        related_name="strategies",
         help_text="User who owns this strategy",
     )
 
@@ -47,12 +55,15 @@ class Strategy(models.Model):
         help_text="Order size as percentage of NAV (1.00-100.00%)",
     )
 
-    min_delta_quote = models.DecimalField(
-        max_digits=10,
+    min_delta_pct = models.DecimalField(
+        max_digits=5,
         decimal_places=2,
-        default=Decimal("10.00"),
-        validators=[MinValueValidator(Decimal("0.01"))],
-        help_text="Minimum delta in quote currency (USDT) to trigger rebalancing",
+        default=Decimal("0.10"),
+        validators=[
+            MinValueValidator(Decimal("0.01")),
+            MaxValueValidator(Decimal("10.00")),
+        ],
+        help_text="Minimum delta as percentage of target value (0.01-10.00%) to trigger rebalancing",
     )
 
     order_step_pct = models.DecimalField(
@@ -78,6 +89,20 @@ class Strategy(models.Model):
         help_text="Absolute cancel buffer as percentage of price (0.15% default)",
     )
 
+    # Quote Asset Configuration
+    quote_asset = models.CharField(
+        max_length=10,
+        choices=SUPPORTED_QUOTE_ASSETS,
+        default="USDT",
+        help_text="Базовая валюта стратегии",
+    )
+
+    exchange_account = models.ForeignKey(
+        ExchangeAccount,
+        on_delete=models.CASCADE,
+        help_text="Коннектор для этой стратегии",
+    )
+
     # Status
     is_active = models.BooleanField(
         default=False,
@@ -98,6 +123,14 @@ class Strategy(models.Model):
         verbose_name_plural = "Strategies"
         ordering = ["-updated_at"]
 
+        constraints = [
+            models.UniqueConstraint(
+                fields=["exchange_account"],
+                condition=models.Q(is_active=True),
+                name="one_active_strategy_per_connector",
+            )
+        ]
+
     def __str__(self):
         status = "Active" if self.is_active else "Inactive"
         return f"{self.user.username} - {self.name} ({status})"
@@ -112,10 +145,12 @@ class Strategy(models.Model):
                 {"order_size_pct": "Order size must be between 1.00% and 100.00%"}
             )
 
-        # Validate min_delta_quote
-        if self.min_delta_quote <= 0:
+        # Validate min_delta_pct
+        if self.min_delta_pct <= 0 or self.min_delta_pct > 10:
             raise ValidationError(
-                {"min_delta_quote": "Minimum delta must be greater than 0"}
+                {
+                    "min_delta_pct": "Minimum delta percentage must be between 0.01% and 10.00%"
+                }
             )
 
         # Validate order_step_pct
@@ -131,6 +166,27 @@ class Strategy(models.Model):
                     "switch_cancel_buffer_pct": "Cancel buffer must be between 0.00% and 1.00%",
                 }
             )
+
+        # Validate quote_asset using constants
+        if self.quote_asset and not is_valid_quote_asset(self.quote_asset):
+            raise ValidationError(
+                {
+                    "quote_asset": f"Invalid quote asset '{self.quote_asset}'. Must be one of: {', '.join(asset[0] for asset in SUPPORTED_QUOTE_ASSETS)}"
+                }
+            )
+
+        # Validate that at least one allocation is the quote_asset (cash position)
+        if self.pk:  # Only validate if strategy exists (has allocations)
+            allocation_assets = [
+                allocation.asset for allocation in self.allocations.all()
+            ]
+            if allocation_assets and self.quote_asset not in allocation_assets:
+                raise ValidationError(
+                    {
+                        "quote_asset": f"Strategy must include {self.quote_asset} allocation for cash management. "
+                        f"Current allocations: {', '.join(allocation_assets)}"
+                    }
+                )
 
     def save(self, *args, **kwargs):
         """Override save to run validation."""
@@ -233,6 +289,16 @@ class StrategyAllocation(models.Model):
                 }
             )
 
+        # Validate asset against supported allocation assets
+        if self.asset and not is_valid_allocation_asset(self.asset):
+            from .constants import ALL_ALLOCATION_ASSETS
+
+            raise ValidationError(
+                {
+                    "asset": f"Invalid asset '{self.asset}'. Must be one of: {', '.join(ALL_ALLOCATION_ASSETS)}"
+                }
+            )
+
     def save(self, *args, **kwargs):
         """Override save to run validation."""
         self.asset = self.asset.upper()  # Ensure uppercase
@@ -299,7 +365,9 @@ class RebalanceExecution(models.Model):
         verbose_name_plural = "Rebalance Executions"
 
     def __str__(self):
-        return f"{self.strategy.name} - {self.created_at.strftime('%Y-%m-%d %H:%M')} ({self.status})"
+        return "{} - {} ({})".format(
+            self.strategy.name, self.created_at.strftime("%Y-%m-%d %H:%M"), self.status
+        )
 
     def mark_completed(self):
         """Mark execution as completed."""

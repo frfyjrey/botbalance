@@ -20,6 +20,36 @@ from .models import Strategy
 logger = logging.getLogger(__name__)
 
 
+# Custom exceptions for RebalanceService error handling
+class RebalanceError(Exception):
+    """Base exception for rebalancing errors."""
+
+    def __init__(self, message: str, error_code: str):
+        self.error_code = error_code
+        super().__init__(message)
+
+
+class NoPricingDataError(RebalanceError):
+    """Raised when pricing data is unavailable."""
+
+    def __init__(self, message: str = "Pricing data unavailable - cannot place orders"):
+        super().__init__(message, "ERROR_PRICING")
+
+
+class NoActiveStrategyError(RebalanceError):
+    """Raised when no active strategy found for connector."""
+
+    def __init__(self, message: str = "No active strategy found for connector"):
+        super().__init__(message, "NO_ACTIVE_STRATEGY")
+
+
+class RateLimitExceededError(RebalanceError):
+    """Raised when rate limit is exceeded."""
+
+    def __init__(self, message: str = "Rate limit exceeded - try again later"):
+        super().__init__(message, "TOO_MANY_REQUESTS")
+
+
 class RebalanceAction(NamedTuple):
     """A single rebalancing action (buy/sell/hold)."""
 
@@ -102,20 +132,84 @@ class RebalanceService:
         try:
             logger.info(f"Calculating rebalance plan for strategy: {strategy.name}")
 
-            # Get current portfolio
-            portfolio_summary = (
-                await self.portfolio_service.calculate_portfolio_summary(
-                    exchange_account, force_refresh_prices
-                )
+            # NEW: First update PortfolioState for the connector before rebalancing
+            logger.info(
+                f"Updating PortfolioState for {exchange_account.name} before rebalancing"
+            )
+            (
+                portfolio_state,
+                error_code,
+            ) = await self.portfolio_service.upsert_portfolio_state(
+                exchange_account,
+                source="tick",  # Rebalancing trigger
             )
 
-            if not portfolio_summary:
-                logger.error("Failed to get portfolio summary")
+            if error_code:
+                logger.error(
+                    f"Cannot rebalance strategy {strategy.name}: PortfolioState error: {error_code}"
+                )
+                if error_code == "ERROR_PRICING":
+                    raise NoPricingDataError(
+                        "Pricing data unavailable - cannot place orders without accurate prices"
+                    )
+                elif error_code == "TOO_MANY_REQUESTS":
+                    raise RateLimitExceededError(
+                        "Rate limited - skipping rebalance for this cycle"
+                    )
+                elif error_code == "NO_ACTIVE_STRATEGY":
+                    raise NoActiveStrategyError(
+                        "No active strategy found for connector"
+                    )
+                else:
+                    # Unknown error code
+                    raise RebalanceError(
+                        f"Unknown portfolio state error: {error_code}", error_code
+                    )
+
+            if not portfolio_state:
+                logger.error("Failed to create/update PortfolioState")
                 return None
 
-            if portfolio_summary.total_nav == 0:
+            # Convert PortfolioState to portfolio data format
+            if portfolio_state.nav_quote == 0:
                 logger.warning("Portfolio NAV is zero, cannot rebalance")
                 return None
+
+            # Create portfolio_summary equivalent from PortfolioState
+            from types import SimpleNamespace
+
+            assets = []
+            for symbol, position_data in portfolio_state.positions.items():
+                amount = Decimal(str(position_data["amount"]))
+                quote_value = Decimal(str(position_data["quote_value"]))
+
+                # Get price from PortfolioState prices
+                price_usd = None
+                if portfolio_state.prices and symbol != portfolio_state.quote_asset:
+                    price_symbol = f"{symbol}{portfolio_state.quote_asset}"
+                    if price_symbol in portfolio_state.prices:
+                        price_usd = Decimal(str(portfolio_state.prices[price_symbol]))
+
+                asset = SimpleNamespace(
+                    symbol=symbol,
+                    balance=amount,
+                    value_usd=quote_value,
+                    price_usd=price_usd,
+                )
+                assets.append(asset)
+
+            # Create portfolio_summary equivalent
+            portfolio_summary = SimpleNamespace(
+                assets=assets,
+                total_nav=portfolio_state.nav_quote,
+                quote_currency=portfolio_state.quote_asset,
+                timestamp=portfolio_state.ts,
+                exchange_account=exchange_account.name,
+            )
+
+            logger.info(
+                f"Using PortfolioState for rebalancing: NAV={portfolio_state.nav_quote} {portfolio_state.quote_asset}"
+            )
 
             # Get target allocations from strategy
             target_allocations = await sync_to_async(strategy.get_target_allocations)()
@@ -150,7 +244,7 @@ class RebalanceService:
                 current_values,
                 target_allocations,
                 portfolio_summary.total_nav,
-                strategy.min_delta_quote,
+                strategy.min_delta_pct,
                 strategy.order_size_pct,
                 asset_prices,
                 strategy.order_step_pct,
@@ -165,7 +259,11 @@ class RebalanceService:
             orders_needed = sum(
                 1 for action in actions if action.action in ("buy", "sell")
             )
-            rebalance_needed = total_delta >= strategy.min_delta_quote
+            # Check if total delta exceeds minimum percentage threshold based on portfolio NAV
+            min_delta_threshold_total = (
+                portfolio_summary.total_nav * strategy.min_delta_pct / 100
+            )
+            rebalance_needed = total_delta >= min_delta_threshold_total
 
             plan = RebalancePlan(
                 strategy_id=strategy.id,
@@ -198,7 +296,7 @@ class RebalanceService:
         current_values: dict[str, Decimal],
         target_allocations: dict[str, Decimal],
         portfolio_nav: Decimal,
-        min_delta_quote: Decimal,
+        min_delta_pct: Decimal,
         order_size_pct: Decimal,
         asset_prices: dict[str, Decimal],
         order_step_pct: Decimal,
@@ -213,7 +311,7 @@ class RebalanceService:
             current_values: Current asset values in quote currency
             target_allocations: Target asset percentages
             portfolio_nav: Total portfolio value
-            min_delta_quote: Minimum delta to trigger rebalancing
+            min_delta_pct: Minimum delta percentage to trigger rebalancing
 
         Returns:
             List of RebalanceAction objects
@@ -245,7 +343,7 @@ class RebalanceService:
             # Determine action
             action, order_amount = self._determine_action(
                 delta_value,
-                min_delta_quote,
+                min_delta_pct,
                 target_value,
                 portfolio_nav,
                 order_size_pct,
@@ -275,27 +373,60 @@ class RebalanceService:
                 if order_price is not None:
                     order_price = self._round_decimal(order_price, 8)
 
-                    # Normalize early using adapter (tick/lot)
+                    # Normalize using centralized normalization functions
                     try:
+                        from botbalance.exchanges.normalization import (
+                            ExchangeFilters,
+                            calculate_quote_amount,
+                            normalize_price,
+                            normalize_quantity,
+                            validate_min_notional,
+                        )
+
                         symbol = f"{asset}{quote_currency}"
-                        n_price, n_base_qty = adapter.normalize_order(
-                            symbol=symbol,
-                            limit_price=order_price,
-                            quote_amount=order_amount,
+                        filters_dict = adapter.get_exchange_filters(symbol)
+                        filters = ExchangeFilters(
+                            tick_size=filters_dict["tick_size"],
+                            lot_size=filters_dict["lot_size"],
+                            min_notional=filters_dict["min_notional"],
                         )
-                        normalized_order_price = self._round_decimal(n_price, 8)
-                        normalized_order_volume = self._round_decimal(n_base_qty, 8)
-                        order_amount_normalized = self._round_decimal(
-                            normalized_order_price * normalized_order_volume, 2
+
+                        # Normalize price and quantity
+                        normalized_order_price = normalize_price(order_price, filters)
+                        raw_base_qty = order_amount / normalized_order_price
+                        normalized_order_volume = normalize_quantity(
+                            raw_base_qty, filters
                         )
-                    except Exception:
+                        order_amount_normalized = calculate_quote_amount(
+                            normalized_order_price, normalized_order_volume
+                        )
+
+                        # Validate minimum notional (log warning if fails)
+                        if not validate_min_notional(
+                            normalized_order_price, normalized_order_volume, filters
+                        ):
+                            logger.warning(
+                                f"Order for {symbol} below min_notional: "
+                                f"{order_amount_normalized} < {filters.min_notional}"
+                            )
+
+                        # Round for storage precision
+                        normalized_order_price = self._round_decimal(
+                            normalized_order_price, 8
+                        )
+                        normalized_order_volume = self._round_decimal(
+                            normalized_order_volume, 8
+                        )
+                        # Keep full precision for quote amount (don't round to 2 decimals)
+                        # order_amount_normalized already has the correct value
+
+                    except Exception as e:
+                        logger.error("Normalization failed for %s: %s", asset, str(e))
                         # If normalization fails, keep pre-normalized values
                         normalized_order_price = order_price
                         normalized_order_volume = order_volume
                         if order_price is not None and order_volume is not None:
-                            order_amount_normalized = self._round_decimal(
-                                order_price * order_volume, 2
-                            )
+                            order_amount_normalized = order_price * order_volume
 
             rebalance_action = RebalanceAction(
                 asset=asset,
@@ -321,7 +452,7 @@ class RebalanceService:
     def _determine_action(
         self,
         delta_value: Decimal,
-        min_delta_quote: Decimal,
+        min_delta_pct: Decimal,
         target_value: Decimal,
         portfolio_nav: Decimal,
         order_size_pct: Decimal,
@@ -331,7 +462,7 @@ class RebalanceService:
 
         Args:
             delta_value: Difference between target and current value
-            min_delta_quote: Minimum delta to trigger action
+            min_delta_pct: Minimum delta as percentage to trigger action
             target_value: Target value for the asset
             portfolio_nav: Total portfolio value
             order_size_pct: Maximum order size as percentage of NAV
@@ -341,8 +472,11 @@ class RebalanceService:
         """
         abs_delta = abs(delta_value)
 
+        # Calculate minimum threshold based on percentage of target value
+        min_delta_threshold = target_value * min_delta_pct / 100
+
         # Check if delta is below minimum threshold
-        if abs_delta < min_delta_quote:
+        if abs_delta < min_delta_threshold:
             return "hold", None
 
         # Calculate maximum order size based on strategy limits

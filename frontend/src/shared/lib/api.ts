@@ -21,6 +21,10 @@ import type {
   TaskStatusResponse,
   User,
 } from '../config/types';
+import type {
+  ExchangeAccount,
+  ExchangeAccountCreateRequest,
+} from '../../entities/exchange';
 
 /**
  * Token management
@@ -55,16 +59,19 @@ export const tokenManager = {
 export class ApiClientError extends Error {
   status: number;
   errors?: Record<string, string[]>;
+  error_code?: string;
 
   constructor(
     message: string,
     status: number,
     errors?: Record<string, string[]>,
+    error_code?: string,
   ) {
     super(message);
     this.name = 'ApiClientError';
     this.status = status;
     this.errors = errors;
+    this.error_code = error_code;
   }
 }
 
@@ -110,7 +117,12 @@ async function apiRequest<T = unknown>(
 
     if (!response.ok) {
       const message = data.message || data.detail || `HTTP ${response.status}`;
-      throw new ApiClientError(message, response.status, data.errors);
+      throw new ApiClientError(
+        message,
+        response.status,
+        data.errors,
+        data.error_code,
+      );
     }
 
     return data;
@@ -258,6 +270,44 @@ export const apiClient = {
     return apiRequest('/api/me/portfolio/last_snapshot/');
   },
 
+  // PortfolioState endpoints (new architecture)
+  async getPortfolioState(params?: {
+    connector_id?: number;
+  }): Promise<import('@entities/portfolio').PortfolioStateResponse> {
+    const queryParams = new URLSearchParams();
+    if (params?.connector_id) {
+      queryParams.set('connector_id', params.connector_id.toString());
+    }
+
+    const url = `/api/me/portfolio/state/${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+    return apiRequest<import('@entities/portfolio').PortfolioStateResponse>(
+      url,
+    );
+  },
+
+  async refreshPortfolioState(params?: {
+    connector_id?: number;
+    force?: boolean;
+  }): Promise<import('@entities/portfolio').RefreshPortfolioStateResponse> {
+    const queryParams = new URLSearchParams();
+    if (params?.connector_id) {
+      queryParams.set('connector_id', params.connector_id.toString());
+    }
+
+    return apiRequest<
+      import('@entities/portfolio').RefreshPortfolioStateResponse
+    >(
+      `/api/me/portfolio/state/refresh/${queryParams.toString() ? '?' + queryParams.toString() : ''}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ force: params?.force || false }),
+      },
+    );
+  },
+
   // Strategy endpoints
   async getStrategy(): Promise<import('@entities/strategy').StrategyResponse> {
     return apiRequest<import('@entities/strategy').StrategyResponse>(
@@ -286,6 +336,37 @@ export const apiClient = {
         method: 'POST',
         body: JSON.stringify(data),
       },
+    );
+  },
+
+  async patchStrategy(
+    data: import('@entities/strategy').StrategyUpdateRequest,
+  ): Promise<import('@entities/strategy').StrategyResponse> {
+    return apiRequest<import('@entities/strategy').StrategyResponse>(
+      '/api/me/strategy/',
+      {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      },
+    );
+  },
+
+  async deleteStrategy(): Promise<
+    import('@entities/strategy').StrategyDeleteResponse
+  > {
+    return apiRequest<import('@entities/strategy').StrategyDeleteResponse>(
+      '/api/me/strategy/',
+      {
+        method: 'DELETE',
+      },
+    );
+  },
+
+  async getStrategyConstants(): Promise<
+    import('@entities/strategy').StrategyConstantsResponse
+  > {
+    return apiRequest<import('@entities/strategy').StrategyConstantsResponse>(
+      '/api/me/strategy/constants/',
     );
   },
 
@@ -323,11 +404,154 @@ export const apiClient = {
     );
   },
 
+  // Orders endpoints
+  async getOrders(params?: {
+    limit?: number;
+    offset?: number;
+    status?: string;
+    symbol?: string;
+    side?: string;
+    exchange?: string;
+  }): Promise<{
+    status: string;
+    orders: Array<{
+      id: number;
+      exchange_order_id: string | null;
+      client_order_id: string | null;
+      exchange: string;
+      symbol: string;
+      side: 'buy' | 'sell';
+      status: string;
+      limit_price: string;
+      quote_amount: string;
+      filled_amount: string;
+      fill_percentage: string;
+      fee_amount: string;
+      fee_asset: string | null;
+      created_at: string;
+      submitted_at: string | null;
+      filled_at: string | null;
+      updated_at: string;
+      error_message: string | null;
+      strategy_name: string | null;
+      execution_id: number | null;
+      is_active: boolean;
+    }>;
+    total: number;
+    limit: number;
+    offset: number;
+    has_more: boolean;
+  }> {
+    const qs = new URLSearchParams();
+    if (params?.limit) qs.set('limit', params.limit.toString());
+    if (params?.offset) qs.set('offset', params.offset.toString());
+    if (params?.status) qs.set('status', params.status);
+    if (params?.symbol) qs.set('symbol', params.symbol);
+    if (params?.side) qs.set('side', params.side);
+    if (params?.exchange) qs.set('exchange', params.exchange);
+    const url = `/api/me/orders/${qs.toString() ? `?${qs.toString()}` : ''}`;
+    return apiRequest(url);
+  },
+
+  async cancelOrder(
+    orderId: number,
+  ): Promise<{ status: string; order_id?: number }> {
+    return apiRequest(`/api/me/orders/${orderId}/cancel/`, { method: 'POST' });
+  },
+
+  async cancelAllOrders(
+    symbol: string,
+  ): Promise<{ status: string; cancelled: number }> {
+    return apiRequest(
+      `/api/me/orders/cancel_all/?symbol=${encodeURIComponent(symbol)}`,
+      { method: 'POST' },
+    );
+  },
+
   // Generic request method for custom calls
   async request<T = unknown>(
     endpoint: string,
     options?: RequestInit,
   ): Promise<T> {
     return apiRequest<T>(endpoint, options);
+  },
+
+  // Exchange accounts management
+  async getExchangeAccounts(): Promise<{
+    status: string;
+    accounts: ExchangeAccount[];
+  }> {
+    return apiRequest<{ status: string; accounts: ExchangeAccount[] }>(
+      '/api/me/exchanges/',
+      {
+        method: 'GET',
+      },
+    );
+  },
+
+  async createExchangeAccount(data: ExchangeAccountCreateRequest): Promise<{
+    status: string;
+    message: string;
+    account: ExchangeAccount;
+  }> {
+    return apiRequest<{
+      status: string;
+      message: string;
+      account: ExchangeAccount;
+    }>('/api/me/exchanges/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async getExchangeAccount(
+    id: number,
+  ): Promise<{ status: string; account: ExchangeAccount }> {
+    return apiRequest<{ status: string; account: ExchangeAccount }>(
+      `/api/me/exchanges/${id}/`,
+      {
+        method: 'GET',
+      },
+    );
+  },
+
+  async updateExchangeAccount(
+    id: number,
+    data: Partial<ExchangeAccountCreateRequest>,
+  ): Promise<{
+    status: string;
+    message: string;
+    account: ExchangeAccount;
+  }> {
+    return apiRequest<{
+      status: string;
+      message: string;
+      account: ExchangeAccount;
+    }>(`/api/me/exchanges/${id}/`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteExchangeAccount(
+    id: number,
+  ): Promise<{ status: string; message: string }> {
+    return apiRequest<{ status: string; message: string }>(
+      `/api/me/exchanges/${id}/`,
+      {
+        method: 'DELETE',
+      },
+    );
+  },
+
+  async checkExchangeAccount(
+    id: number,
+  ): Promise<import('@entities/exchange').HealthCheckResponse> {
+    return apiRequest<import('@entities/exchange').HealthCheckResponse>(
+      `/api/me/exchanges/${id}/check/`,
+      {
+        method: 'POST',
+      },
+    );
   },
 };

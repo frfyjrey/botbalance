@@ -12,6 +12,7 @@ import type {
   StrategyCreateRequest,
   StrategyUpdateRequest,
   StrategyActivateRequest,
+  StrategyDeleteResponse,
   RebalancePlanResponse,
   RebalanceExecuteRequest,
   RebalanceExecuteResponse,
@@ -218,5 +219,70 @@ export const useExecuteRebalance = (
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.STRATEGY] });
     },
     ...options,
+  });
+};
+
+/**
+ * Hook to partially update strategy (e.g., toggle activation)
+ */
+export const usePatchStrategy = (
+  options?: UseMutationOptions<StrategyResponse, Error, StrategyUpdateRequest>,
+) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: StrategyUpdateRequest) => apiClient.patchStrategy(data),
+    onSuccess: data => {
+      // Update strategy cache
+      queryClient.setQueryData([QUERY_KEYS.STRATEGY], data);
+      // Invalidate related queries
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.REBALANCE_PLAN] });
+      queryClient.invalidateQueries({
+        queryKey: [QUERY_KEYS.PORTFOLIO_SUMMARY],
+      });
+    },
+    ...options,
+  });
+};
+
+/**
+ * Hook to delete strategy
+ */
+export const useDeleteStrategy = (
+  options?: UseMutationOptions<StrategyDeleteResponse, Error, void>,
+) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => apiClient.deleteStrategy(),
+    onSuccess: () => {
+      // Clear strategy cache
+      queryClient.removeQueries({ queryKey: [QUERY_KEYS.STRATEGY] });
+      // Invalidate related queries
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.REBALANCE_PLAN] });
+      queryClient.invalidateQueries({
+        queryKey: [QUERY_KEYS.PORTFOLIO_SUMMARY],
+      });
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.ORDERS] });
+    },
+    ...options,
+  });
+};
+
+/**
+ * Hook to fetch strategy constants (supported assets and currencies)
+ */
+export const useStrategyConstants = () => {
+  return useQuery({
+    queryKey: [QUERY_KEYS.STRATEGY, 'constants'],
+    queryFn: () => apiClient.getStrategyConstants(),
+    staleTime: 1000 * 60 * 60, // Constants are stable, cache for 1 hour
+    retry: (failureCount, error) => {
+      // Don't retry on 401 (auth)
+      if (error && 'status' in error && error.status === 401) {
+        return false;
+      }
+      return failureCount < 3;
+    },
   });
 };

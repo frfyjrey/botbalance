@@ -3,18 +3,22 @@ API Views for the botbalance project.
 """
 
 from datetime import datetime
+from typing import cast
 
 import redis
 from celery import current_app as celery_app
 from celery.result import AsyncResult
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import connection
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from botbalance.exchanges.models import PortfolioState
 from botbalance.tasks.tasks import echo_task, heartbeat_task, long_running_task
 from strategies.models import Order
 
@@ -23,6 +27,9 @@ from .serializers import (
     CreateSnapshotResponseSerializer,
     LatestSnapshotResponseSerializer,
     LoginSerializer,
+    PortfolioStateResponseSerializer,
+    RefreshStateRequestSerializer,
+    RefreshStateResponseSerializer,
     SnapshotListResponseSerializer,
     TaskSerializer,
     UserSerializer,
@@ -365,9 +372,12 @@ def user_balances_view(request):
     Later: will support account selection via query params.
     """
     import asyncio
+    import logging
     from decimal import Decimal
 
     from botbalance.exchanges.models import ExchangeAccount
+
+    logger = logging.getLogger(__name__)
 
     try:
         # Get user's first active exchange account
@@ -385,25 +395,63 @@ def user_balances_view(request):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # Get balances via adapter
-        adapter = exchange_account.get_adapter()
-        raw_balances = asyncio.run(adapter.get_balances(exchange_account.account_type))
-
-        # Reuse portfolio_service for consistent NAV and pricing
+        # Get balances with fallback to snapshot data
+        # Try live calculation first
         from botbalance.exchanges.portfolio_service import portfolio_service
 
         portfolio_summary = asyncio.run(
             portfolio_service.calculate_portfolio_summary(exchange_account)
         )
 
+        # If live calculation failed, try fallback to latest snapshot
+        if portfolio_summary is None:
+            logger.warning(
+                "Balance calculation returned None, trying fallback to latest snapshot"
+            )
+
+            # Fallback: try to get data from latest snapshot
+            from botbalance.exchanges.snapshot_service import snapshot_service
+
+            latest_snapshot = snapshot_service.get_latest_snapshot(
+                user=request.user, exchange_account=exchange_account
+            )
+
+            if latest_snapshot:
+                logger.info(
+                    f"Using fallback snapshot {latest_snapshot.id} for balances"
+                )
+                # Convert snapshot to portfolio summary format
+                portfolio_summary = _convert_snapshot_to_portfolio_summary(
+                    latest_snapshot
+                )
+                # Extract raw balances from snapshot
+                raw_balances = {
+                    symbol: Decimal(str(position["amount"]))
+                    for symbol, position in latest_snapshot.positions.items()
+                }
+            else:
+                logger.error("No snapshots available for fallback")
+                portfolio_summary = None
+                raw_balances = {}
+        else:
+            # Live calculation succeeded, get raw balances normally
+            adapter = exchange_account.get_adapter()
+            raw_balances = asyncio.run(
+                adapter.get_balances(exchange_account.account_type)
+            )
+
         if portfolio_summary is None:
             return Response(
                 {
                     "status": "error",
-                    "message": "Failed to calculate portfolio summary. Please try again later.",
-                    "error_code": "PORTFOLIO_CALCULATION_FAILED",
+                    "message": "Unable to fetch balances and no previous data available. This may be due to external API issues.",
+                    "error_code": "BALANCE_FETCH_ERROR",
+                    "details": {
+                        "suggestion": "Please try again in a few minutes. The issue may be with external exchange APIs.",
+                        "fallback_attempted": True,
+                    },
                 },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
         # Map assets to values for response
@@ -411,11 +459,239 @@ def user_balances_view(request):
             asset.symbol: asset.value_usd for asset in portfolio_summary.assets
         }
 
+        # Use same whitelist as portfolio service for consistency (Top ~200 from CoinMarketCap)
+        ALLOWED_ASSETS = {
+            # Top 10 Major cryptocurrencies
+            "BTC",
+            "ETH",
+            "USDT",
+            "BNB",
+            "SOL",
+            "XRP",
+            "USDC",
+            "ADA",
+            "DOGE",
+            "AVAX",
+            # Top 11-50
+            "LINK",
+            "DOT",
+            "MATIC",
+            "TRX",
+            "ICP",
+            "SHIB",
+            "UNI",
+            "LTC",
+            "BCH",
+            "NEAR",
+            "APT",
+            "LEO",
+            "DAI",
+            "ATOM",
+            "XMR",
+            "ETC",
+            "VET",
+            "FIL",
+            "HBAR",
+            "TAO",
+            "ARB",
+            "IMX",
+            "OP",
+            "MKR",
+            "INJ",
+            "AAVE",
+            "GRT",
+            "THETA",
+            "LDO",
+            "RUNE",
+            "STX",
+            "FTM",
+            "ALGO",
+            "XTZ",
+            "EGLD",
+            "FLOW",
+            "SAND",
+            "MANA",
+            "APE",
+            "CRV",
+            # Top 51-100
+            "SNX",
+            "CAKE",
+            "SUSHI",
+            "COMP",
+            "YFI",
+            "BAL",
+            "1INCH",
+            "ENJ",
+            "GALA",
+            "CHZ",
+            "ZIL",
+            "MINA",
+            "KAVA",
+            "ONE",
+            "ROSE",
+            "CELO",
+            "ANKR",
+            "REN",
+            "OCEAN",
+            "NMR",
+            "FET",
+            "KSM",
+            "WAVES",
+            "ICX",
+            "ZEC",
+            "DASH",
+            "DCR",
+            "QTUM",
+            "BAT",
+            "SC",
+            "STORJ",
+            "REP",
+            "KNC",
+            "LRC",
+            "BNT",
+            "MLN",
+            "GNO",
+            "RLC",
+            "MAID",
+            "ANT",
+            # Top 101-150
+            "HOT",
+            "DENT",
+            "WIN",
+            "BTT",
+            "TWT",
+            "SFP",
+            "DYDX",
+            "GMX",
+            "PERP",
+            "LOOKS",
+            "BLUR",
+            "MAGIC",
+            "RDNT",
+            "JOE",
+            "PYR",
+            "GOVI",
+            "SPELL",
+            "TRIBE",
+            "BADGER",
+            "RARI",
+            "MASK",
+            "ALPHA",
+            "BETA",
+            "FARM",
+            "CREAM",
+            "HEGIC",
+            "PICKLE",
+            "COVER",
+            "VALUE",
+            "ARMOR",
+            "SAFE",
+            "DPI",
+            "INDEX",
+            "FLI",
+            "MVI",
+            "BED",
+            "DATA",
+            "GMI",
+            # Layer 2 & Scaling
+            "METIS",
+            "BOBA",
+            "STRK",
+            # Exchange Tokens
+            "FTT",
+            "CRO",
+            "HT",
+            "OKB",
+            "KCS",
+            "GT",
+            # Stablecoins
+            "BUSD",
+            "TUSD",
+            "USDD",
+            "FRAX",
+            "MIM",
+            "LUSD",
+            "USDP",
+            "GUSD",
+            "HUSD",
+            "RSV",
+            "NUSD",
+            "DUSD",
+            "ALUSD",
+            "OUSD",
+            "USDX",
+            "CUSD",
+            "EURS",
+            # DeFi Protocols
+            # Gaming & NFT
+            "AXS",
+            "SLP",
+            "ILV",
+            "ALICE",
+            "TLM",
+            "NFTX",
+            "TREASURE",
+            "PRIME",
+            "GHST",
+            # Oracle & Infrastructure
+            "BAND",
+            "TRB",
+            "API3",
+            "DIA",
+            "UMA",
+            "NEST",
+            "FLUX",
+            "PYTH",
+            # Meme Coins
+            "FLOKI",
+            "PEPE",
+            "BONK",
+            "WIF",
+            "DEGEN",
+            "BOME",
+            "MEME",
+            # New & Trending (2023-2024)
+            "SUI",
+            "SEI",
+            "TIA",
+            "JTO",
+            "WLD",
+            "JUP",
+            "ONDO",
+            "MANTA",
+            "ALT",
+            "AEVO",
+            "PIXEL",
+            "PORTAL",
+            "AXL",
+            # Additional Popular Tokens
+            "HOOK",
+            "POLYX",
+            "LEVER",
+            "HFT",
+            "DUSK",
+            "HIGH",
+            "CVX",
+            "FXS",
+            "OHM",
+            "ICE",
+            "BICO",
+            "POLS",
+            "DF",
+            "TVK",
+            "SUPER",
+            "GODS",
+            "DPET",
+            "WILD",
+        }
+
         balances_data = []
         total_usd_value = portfolio_summary.total_nav
 
         for asset, balance in raw_balances.items():
-            if balance > 0:
+            if (
+                balance > 0 and asset.upper() in ALLOWED_ASSETS
+            ):  # Added whitelist filter
                 usd_value = value_map.get(asset, Decimal("0.00"))
                 balances_data.append(
                     {
@@ -431,7 +707,7 @@ def user_balances_view(request):
             "account_type": exchange_account.account_type,
             "balances": balances_data,
             "total_usd_value": total_usd_value,
-            "timestamp": datetime.now(),
+            "timestamp": timezone.now(),
         }
 
         return Response(response_data)
@@ -451,21 +727,7 @@ def user_balances_view(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
-
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def portfolio_summary_view(request):
-    """
-    Get user's portfolio summary with NAV, asset allocations, and performance data.
-
-    For Step 2: Provides complete portfolio snapshot including:
-    - Total Net Asset Value (NAV) in USD
-    - Individual asset balances and values
-    - Percentage allocation of each asset
-    - Price cache statistics and data sources
-
-    Returns 200 with portfolio data or appropriate error response.
-    """
+    # portfolio_summary_view removed - use portfolio_state_view instead
     import asyncio
     import logging
 
@@ -475,6 +737,12 @@ def portfolio_summary_view(request):
     from .serializers import PortfolioSummaryResponseSerializer
 
     logger = logging.getLogger(__name__)
+
+    # DEPRECATION WARNING
+    logger.warning(
+        f"User {sanitize_for_logs(request.user.username)} is using deprecated /portfolio/summary endpoint. "
+        "Consider migrating to /portfolio/state/ for better performance."
+    )
 
     try:
         # Get user's active exchange account
@@ -492,7 +760,7 @@ def portfolio_summary_view(request):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # Calculate portfolio summary
+        # Calculate portfolio summary with fallback to latest snapshot
         sanitized_username = (
             request.user.username.replace("\r", "").replace("\n", "")
             if request.user.username
@@ -504,14 +772,64 @@ def portfolio_summary_view(request):
             portfolio_service.calculate_portfolio_summary(exchange_account)
         )
 
+        # Track if we're using fallback data
+        using_fallback = False
+        fallback_age_minutes = 0
+
+        # If live calculation failed, try fallback to latest snapshot
+        if portfolio_summary is None:
+            # Throttle repeated warnings (only log every 5 minutes per user)
+            cache_key = (
+                f"portfolio_fallback_warning_{request.user.id}_{exchange_account.id}"
+            )
+            from django.core.cache import cache
+
+            if not cache.get(cache_key):
+                logger.warning(
+                    "Portfolio calculation returned None, trying fallback to latest snapshot"
+                )
+                cache.set(cache_key, True, 300)  # Cache for 5 minutes
+
+            # Fallback: try to get data from latest snapshot
+            from botbalance.exchanges.snapshot_service import snapshot_service
+
+            latest_snapshot = snapshot_service.get_latest_snapshot(
+                user=request.user, exchange_account=exchange_account
+            )
+
+            if latest_snapshot:
+                from datetime import datetime
+
+                fallback_age_minutes = int(
+                    (
+                        datetime.now(latest_snapshot.ts.tzinfo) - latest_snapshot.ts
+                    ).total_seconds()
+                    / 60
+                )
+                if not cache.get(cache_key):
+                    logger.info(
+                        f"Using fallback snapshot {latest_snapshot.id} from {latest_snapshot.ts} ({fallback_age_minutes}min old)"
+                    )
+                # Convert snapshot to portfolio summary format
+                portfolio_summary = _convert_snapshot_to_portfolio_summary(
+                    latest_snapshot
+                )
+                using_fallback = True
+            else:
+                logger.error("No snapshots available for fallback")
+
         if portfolio_summary is None:
             return Response(
                 {
                     "status": "error",
-                    "message": "Failed to calculate portfolio summary. Please try again later.",
+                    "message": "Unable to calculate portfolio summary and no previous data available. This may be due to external API issues.",
                     "error_code": "PORTFOLIO_CALCULATION_FAILED",
+                    "details": {
+                        "suggestion": "Please try again in a few minutes. The issue may be with external exchange APIs.",
+                        "fallback_attempted": True,
+                    },
                 },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
         # Validate portfolio data
@@ -540,46 +858,26 @@ def portfolio_summary_view(request):
             "price_cache_stats": portfolio_summary.price_cache_stats,
         }
 
-        # Create portfolio snapshot asynchronously (fire-and-forget with throttling)
-        try:
-            from threading import Thread
-
-            from botbalance.exchanges.snapshot_service import snapshot_service
-
-            def create_snapshot_async():
-                """Create snapshot in background thread."""
-                try:
-                    snapshot = asyncio.run(
-                        snapshot_service.throttled_create_snapshot(
-                            user=request.user,
-                            exchange_account=exchange_account,
-                            source="summary",
-                        )
-                    )
-                    if snapshot:
-                        logger.debug(
-                            f"Created background snapshot {snapshot.id} for user {sanitize_for_logs(request.user.username)}"
-                        )
-                    else:
-                        logger.debug(
-                            f"Snapshot creation throttled for user {sanitize_for_logs(request.user.username)}"
-                        )
-                except Exception as e:
-                    logger.warning(
-                        f"Background snapshot creation failed for user {sanitize_for_logs(request.user.username)}: {e}"
-                    )
-
-            # Start background thread (non-blocking)
-            Thread(target=create_snapshot_async, daemon=True).start()
-
-        except Exception as e:
-            # If snapshot creation setup fails, continue with response
-            logger.warning(f"Failed to setup background snapshot creation: {e}")
+        # NOTE: Snapshot creation removed as part of PortfolioState migration (Step 5)
+        # Snapshots are now created from PortfolioState in dedicated endpoints
+        logger.debug(
+            f"Legacy summary endpoint used by {sanitize_for_logs(request.user.username)}, "
+            f"using_fallback={using_fallback}, no snapshot created"
+        )
 
         # Serialize response
         response_data = {
             "status": "success",
             "portfolio": portfolio_data,
+            "exchange_account": {
+                "id": exchange_account.id,
+                "name": exchange_account.name,
+                "exchange": exchange_account.exchange,
+                "account_type": exchange_account.account_type,
+                "testnet": exchange_account.testnet,
+                "is_active": exchange_account.is_active,
+            },
+            # exchange_status removed - replaced by simple health fields in ExchangeAccount model
         }
 
         serializer = PortfolioSummaryResponseSerializer(data=response_data)
@@ -729,7 +1027,10 @@ def create_portfolio_snapshot_view(request):
     import logging
 
     from botbalance.exchanges.models import ExchangeAccount
-    from botbalance.exchanges.snapshot_service import snapshot_service
+    from botbalance.exchanges.snapshot_service import (
+        NoPortfolioStateError,
+        snapshot_service,
+    )
 
     logger = logging.getLogger(__name__)
 
@@ -755,24 +1056,35 @@ def create_portfolio_snapshot_view(request):
         ).first()
 
         # Create snapshot
-        if force:
-            # Force creation bypasses throttling
-            snapshot = asyncio.run(
-                snapshot_service.create_snapshot(
-                    user=request.user,
-                    exchange_account=exchange_account,
-                    source="summary",
-                    force=True,
+        try:
+            if force:
+                # Force creation bypasses throttling
+                snapshot = asyncio.run(
+                    snapshot_service.create_snapshot(
+                        user=request.user,
+                        exchange_account=exchange_account,
+                        source="summary",
+                        force=True,
+                    )
                 )
-            )
-        else:
-            # Use throttled creation
-            snapshot = asyncio.run(
-                snapshot_service.throttled_create_snapshot(
-                    user=request.user,
-                    exchange_account=exchange_account,
-                    source="summary",
+            else:
+                # Use throttled creation
+                snapshot = asyncio.run(
+                    snapshot_service.throttled_create_snapshot(
+                        user=request.user,
+                        exchange_account=exchange_account,
+                        source="summary",
+                    )
                 )
+        except NoPortfolioStateError as e:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Portfolio state not available",
+                    "error_code": e.error_code,
+                    "suggestion": "Refresh portfolio state first using POST /api/me/portfolio/state/refresh/",
+                },
+                status=status.HTTP_409_CONFLICT,
             )
 
         if snapshot:
@@ -972,6 +1284,7 @@ def user_orders_view(request):
     - status: Filter by order status (pending, submitted, open, filled, cancelled, rejected, failed)
     - symbol: Filter by trading symbol (e.g., 'BTCUSDT')
     - side: Filter by order side (buy, sell)
+    - exchange: Filter by exchange (binance, okx)
 
     Returns:
     - orders: List of user orders
@@ -987,6 +1300,7 @@ def user_orders_view(request):
         status_filter = request.GET.get("status")
         symbol_filter = request.GET.get("symbol")
         side_filter = request.GET.get("side")
+        exchange_filter = request.GET.get("exchange")
 
         # Build query
         orders_qs = Order.objects.filter(user=request.user)
@@ -997,6 +1311,8 @@ def user_orders_view(request):
             orders_qs = orders_qs.filter(symbol__iexact=symbol_filter)
         if side_filter:
             orders_qs = orders_qs.filter(side=side_filter)
+        if exchange_filter:
+            orders_qs = orders_qs.filter(exchange=exchange_filter)
 
         # Get total count
         total_count = orders_qs.count()
@@ -1072,6 +1388,922 @@ def user_orders_view(request):
                 "status": "error",
                 "message": "Failed to fetch orders",
                 "error_code": "ORDERS_FETCH_ERROR",
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def cancel_order_view(request, order_id: int):
+    """
+    Cancel specific user order by our Order.id or exchange_order_id.
+    """
+    import asyncio
+
+    from botbalance.exchanges.models import ExchangeAccount
+
+    try:
+        # Load user's order
+        try:
+            order = Order.objects.get(id=order_id, user=request.user)
+        except Order.DoesNotExist:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Order not found",
+                    "error_code": "ORDER_NOT_FOUND",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Resolve account and adapter - use the same exchange where order was placed
+        exchange_account = ExchangeAccount.objects.filter(
+            user=request.user,
+            exchange=order.exchange,  # Match the exchange where order was placed
+            is_active=True,
+        ).first()
+        if not exchange_account:
+            return Response(
+                {
+                    "status": "error",
+                    "message": f"No active {order.exchange} account found. Order was placed on {order.exchange} but you don't have an active account for this exchange.",
+                    "error_code": "EXCHANGE_ACCOUNT_MISMATCH",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        adapter = exchange_account.get_adapter()
+        # Prefer client_order_id for idempotent cancel, fallback to exchange id
+        target_id = order.client_order_id or order.exchange_order_id
+        if not target_id:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Order has no identifiers for cancellation",
+                    "error_code": "ORDER_NO_IDENTIFIERS",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            # Determine if target_id is client_order_id or exchange_order_id
+            if target_id == order.client_order_id:
+                ok = asyncio.run(
+                    adapter.cancel_order(
+                        symbol=order.symbol,
+                        client_order_id=str(target_id),
+                        account="spot",
+                    )
+                )
+            else:
+                ok = asyncio.run(
+                    adapter.cancel_order(
+                        symbol=order.symbol, order_id=str(target_id), account="spot"
+                    )
+                )
+            if ok:
+                order.mark_cancelled()
+                return Response({"status": "success", "order_id": order.id})
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Cancellation failed",
+                    "error_code": "CANCEL_FAILED",
+                },
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        except Exception as cancel_error:
+            # Handle specific exchange errors
+            from botbalance.exchanges.exceptions import FeatureNotEnabledError
+
+            if isinstance(cancel_error, FeatureNotEnabledError):
+                return Response(
+                    {
+                        "status": "error",
+                        "message": f"Order cancellation not supported on {order.exchange}",
+                        "error_code": "FEATURE_NOT_SUPPORTED",
+                    },
+                    status=status.HTTP_501_NOT_IMPLEMENTED,
+                )
+
+            # Re-raise for general exception handler
+            raise cancel_error
+    except Exception as e:
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.error(f"cancel_order_view failed: {e}", exc_info=True)
+        return Response(
+            {"status": "error", "message": "Internal error"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def cancel_all_orders_view(request):
+    """
+    Cancel all open orders for a symbol (optional symbol param required).
+    """
+    import asyncio
+
+    from botbalance.exchanges.models import ExchangeAccount
+
+    try:
+        symbol = request.GET.get("symbol")
+        if not symbol:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Query param 'symbol' is required",
+                    "error_code": "SYMBOL_REQUIRED",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        exchange_account = ExchangeAccount.objects.filter(
+            user=request.user, is_active=True
+        ).first()
+        if not exchange_account:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "No active exchange accounts",
+                    "error_code": "NO_EXCHANGE_ACCOUNTS",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        adapter = exchange_account.get_adapter()
+        cancelled_count = asyncio.run(
+            adapter.cancel_open_orders(symbol.upper(), account="spot")
+        )
+        return Response({"status": "success", "cancelled": cancelled_count})
+    except Exception as e:
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.error(f"cancel_all_orders_view failed: {e}", exc_info=True)
+        return Response(
+            {"status": "error", "message": "Internal error"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+# =============================================================================
+# EXCHANGE ACCOUNTS MANAGEMENT VIEWS
+# =============================================================================
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def exchange_accounts_view(request):
+    """
+    List all user's exchange accounts or create a new one.
+
+    GET: Returns list of user's exchange accounts (excluding sensitive data)
+    POST: Creates new exchange account for user
+    """
+    from botbalance.exchanges.models import ExchangeAccount
+
+    from .serializers import ExchangeAccountSerializer
+
+    if request.method == "GET":
+        # List user's exchange accounts
+        accounts = ExchangeAccount.objects.filter(user=request.user).order_by(
+            "-created_at"
+        )
+        serializer = ExchangeAccountSerializer(accounts, many=True)
+
+        return Response({"status": "success", "accounts": serializer.data})
+
+    elif request.method == "POST":
+        # Create new exchange account
+        data = request.data.copy()
+        data["user"] = request.user.id
+
+        serializer = ExchangeAccountSerializer(data=data)
+        if serializer.is_valid():
+            try:
+                account = serializer.save(user=request.user)
+                return Response(
+                    {
+                        "status": "success",
+                        "message": "Exchange account created successfully",
+                        "account": ExchangeAccountSerializer(account).data,
+                    },
+                    status=status.HTTP_201_CREATED,
+                )
+            except ValidationError as e:
+                return Response(
+                    {
+                        "status": "error",
+                        "message": "Validation failed",
+                        "errors": e.message_dict
+                        if hasattr(e, "message_dict")
+                        else {"non_field_errors": ["Invalid input data"]},
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Invalid data",
+                    "errors": serializer.errors,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    # This should not be reached due to @api_view decorator, but added for completeness
+    return Response(
+        {"status": "error", "message": "Method not allowed"},
+        status=status.HTTP_405_METHOD_NOT_ALLOWED,
+    )
+
+
+@api_view(["GET", "PUT", "DELETE"])
+@permission_classes([IsAuthenticated])
+def exchange_account_detail_view(request, account_id):
+    """
+    Get, update or delete a specific exchange account.
+
+    GET: Returns account details
+    PUT: Updates account
+    DELETE: Deletes account
+    """
+    from botbalance.exchanges.models import ExchangeAccount
+
+    from .serializers import ExchangeAccountSerializer
+
+    try:
+        account = ExchangeAccount.objects.get(id=account_id, user=request.user)
+    except ExchangeAccount.DoesNotExist:
+        return Response(
+            {"status": "error", "message": "Exchange account not found"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    if request.method == "GET":
+        serializer = ExchangeAccountSerializer(account)
+        return Response({"status": "success", "account": serializer.data})
+
+    elif request.method == "PUT":
+        data = request.data.copy()
+        # Don't allow changing user
+        data.pop("user", None)
+
+        serializer = ExchangeAccountSerializer(account, data=data, partial=True)
+        if serializer.is_valid():
+            try:
+                updated_account = serializer.save()
+                return Response(
+                    {
+                        "status": "success",
+                        "message": "Exchange account updated successfully",
+                        "account": ExchangeAccountSerializer(updated_account).data,
+                    }
+                )
+            except ValidationError as e:
+                return Response(
+                    {
+                        "status": "error",
+                        "message": "Validation failed",
+                        "errors": e.message_dict
+                        if hasattr(e, "message_dict")
+                        else {"non_field_errors": ["Invalid input data"]},
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Invalid data",
+                    "errors": serializer.errors,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    elif request.method == "DELETE":
+        account_name = account.name
+        account.delete()
+        return Response(
+            {
+                "status": "success",
+                "message": f"Exchange account '{account_name}' deleted successfully",
+            }
+        )
+
+    # This should not be reached due to @api_view decorator, but added for completeness
+    return Response(
+        {"status": "error", "message": "Method not allowed"},
+        status=status.HTTP_405_METHOD_NOT_ALLOWED,
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def check_exchange_account_view(request, account_id):
+    """
+    Perform lightweight health check on exchange account.
+
+    Makes 2 quick API calls:
+    1. Public /api/v3/time endpoint (without auth)
+    2. Signed /api/v3/openOrders?limit=1 endpoint (with auth)
+
+    Updates health fields and returns status with latency metrics.
+    Does not calculate portfolio state or prices.
+    """
+    import asyncio
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    from asgiref.sync import sync_to_async
+    from django.utils import timezone
+
+    from botbalance.exchanges.models import ExchangeAccount
+
+    try:
+        account = ExchangeAccount.objects.get(id=account_id, user=request.user)
+    except ExchangeAccount.DoesNotExist:
+        return Response(
+            {"status": "error", "message": "Exchange account not found"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    async def perform_health_check():
+        """Perform the actual health check with timing."""
+        start_time = time.time()
+
+        try:
+            adapter = account.get_adapter()
+
+            # 1. Public endpoint test - get server time (no auth required)
+            public_start = time.time()
+            public_success = False
+            public_error = None
+            try:
+                await adapter.get_server_time()
+                public_ms = int((time.time() - public_start) * 1000)
+                public_success = True
+            except Exception as e:
+                public_error = str(e)
+
+            # 2. Signed endpoint test - get open orders with limit (requires auth)
+            signed_start = time.time()
+            signed_success = False
+            signed_error = None
+            try:
+                # Get open orders - limit is handled internally by adapter
+                await adapter.get_open_orders()
+                signed_ms = int((time.time() - signed_start) * 1000)
+                signed_success = True
+            except Exception as e:
+                signed_error = str(e)
+
+            total_latency = int((time.time() - start_time) * 1000)
+
+            # Determine overall status
+            if public_success and signed_success:
+                status_result = "healthy"
+                await sync_to_async(account.update_health_success)(total_latency)
+            elif public_success and not signed_success:
+                if signed_error and (
+                    "API-key" in signed_error
+                    or "signature" in signed_error
+                    or "Invalid API" in signed_error
+                ):
+                    status_result = "auth_error"
+                    await sync_to_async(account.update_health_error)("AUTH_ERROR")
+                elif signed_error and (
+                    "rate limit" in signed_error.lower() or "429" in signed_error
+                ):
+                    status_result = "rate_limited"
+                    await sync_to_async(account.update_health_error)("RATE_LIMITED")
+                else:
+                    status_result = "down"
+                    await sync_to_async(account.update_health_error)("API_ERROR")
+            elif not public_success:
+                if public_error and "timeout" in public_error.lower():
+                    status_result = "down"
+                    await sync_to_async(account.update_health_error)("TIMEOUT")
+                elif abs(time.time() - start_time) > 30:  # Simple time skew check
+                    status_result = "time_skew"
+                    await sync_to_async(account.update_health_error)("TIME_SKEW")
+                else:
+                    status_result = "down"
+                    await sync_to_async(account.update_health_error)("NETWORK_ERROR")
+
+            return {
+                "status": status_result,
+                "public_ms": public_ms if public_success else None,
+                "signed_ms": signed_ms if signed_success else None,
+                "total_latency_ms": total_latency,
+                "checked_at": timezone.now().isoformat(),
+                "public_success": public_success,
+                "signed_success": signed_success,
+                "public_error": public_error if not public_success else None,
+                "signed_error": signed_error if not signed_success else None,
+            }
+
+        except Exception as e:
+            # Catastrophic failure
+            total_latency = int((time.time() - start_time) * 1000)
+            await sync_to_async(account.update_health_error)("CRITICAL_ERROR")
+            return {
+                "status": "down",
+                "public_ms": None,
+                "signed_ms": None,
+                "total_latency_ms": total_latency,
+                "checked_at": timezone.now().isoformat(),
+                "error": str(e),
+            }
+
+    def run_async_in_thread():
+        """Run async code in a new thread with fresh event loop."""
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(perform_health_check())
+        finally:
+            loop.close()
+
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(run_async_in_thread)
+            result = future.result(timeout=30)  # 30 second timeout
+
+        return Response(
+            {
+                "status": "success",
+                "connector_id": account.id,
+                "connector_name": account.name,
+                "health_check": result,
+            }
+        )
+
+    except TimeoutError:
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.error(
+            "Health check timeout for account %s", sanitize_for_logs(str(account_id))
+        )
+
+        account.update_health_error("TIMEOUT")
+        return Response(
+            {
+                "status": "error",
+                "message": "Health check timeout (30 seconds)",
+                "connector_id": account.id,
+            },
+            status=status.HTTP_408_REQUEST_TIMEOUT,
+        )
+    except Exception as e:
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.error(
+            "Health check failed for account %s: %s",
+            sanitize_for_logs(str(account_id)),
+            sanitize_for_logs(str(e)),
+        )
+
+        account.update_health_error("CHECK_FAILED")
+        return Response(
+            {
+                "status": "error",
+                "message": "Health check failed",
+                "connector_id": account.id,
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+# =============================================================================
+# HELPER FUNCTIONS
+# =============================================================================
+
+
+def _convert_snapshot_to_portfolio_summary(snapshot):
+    """
+    Convert PortfolioSnapshot to PortfolioSummary format for fallback scenarios.
+
+    Used when live portfolio calculation fails and we need to return
+    data from the latest successful snapshot.
+    """
+    from datetime import datetime
+    from decimal import ROUND_HALF_UP, Decimal
+
+    from botbalance.exchanges.portfolio_service import PortfolioAsset, PortfolioSummary
+
+    # Convert snapshot positions to PortfolioAsset objects
+    assets = []
+    total_nav = Decimal(str(snapshot.nav_quote))
+
+    # Round total_nav to 2 decimal places for serializer
+    total_nav = total_nav.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    for symbol, position_data in snapshot.positions.items():
+        balance = Decimal(str(position_data["amount"]))
+        value_usd = Decimal(str(position_data["quote_value"]))
+
+        # Calculate price from amount and value
+        price_usd = value_usd / balance if balance > 0 else Decimal("0")
+        # Round price_usd to max 18 decimal places
+        price_usd = price_usd.quantize(Decimal("0." + "0" * 18), rounding=ROUND_HALF_UP)
+
+        # Calculate percentage and limit to max 5 digits total (XXX.X format)
+        if total_nav > 0:
+            percentage = value_usd / total_nav * 100
+            # Limit to 3 digits before decimal, 1 after (XXX.X max)
+            percentage = min(percentage, Decimal("999.9"))
+            percentage = percentage.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+        else:
+            percentage = Decimal("0.0")
+
+        # Round value_usd to 2 decimal places
+        value_usd = value_usd.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+        asset = PortfolioAsset(
+            symbol=symbol,
+            balance=balance,
+            price_usd=price_usd,
+            value_usd=value_usd,
+            percentage=percentage,
+            price_source="snapshot_fallback",  # Mark as fallback data
+        )
+        assets.append(asset)
+
+    # Sort assets by value descending
+    assets.sort(key=lambda a: a.value_usd, reverse=True)
+
+    # Create PortfolioSummary object with proper price_cache_stats structure
+    portfolio_summary = PortfolioSummary(
+        total_nav=total_nav,
+        assets=assets,
+        quote_currency=snapshot.quote_asset,
+        timestamp=snapshot.ts,  # Use datetime object, not isoformat string
+        exchange_account=snapshot.exchange_account.name
+        if snapshot.exchange_account
+        else "Unknown",
+        price_cache_stats={
+            "cache_backend": "snapshot_fallback",  # Required field
+            "default_ttl": 0,  # Required field - no TTL for snapshot data
+            "stale_threshold": 0,  # Required field - snapshot is already stale
+            "supported_quotes": ["USDT", "USD", "USDC", "BUSD"],  # Required field
+            "cached_count": len(assets),
+            "fresh_count": 0,
+            "mock_count": 0,
+            "stablecoin_count": len(
+                [
+                    a
+                    for a in assets
+                    if a.symbol in ["USDT", "USDC", "BUSD", "DAI", "TUSD"]
+                ]
+            ),
+            "fallback_used": True,  # Indicate this is fallback data
+            "snapshot_age_minutes": int(
+                (datetime.now(snapshot.ts.tzinfo) - snapshot.ts).total_seconds() / 60
+            ),
+        },
+    )
+
+    return portfolio_summary
+
+
+# =============================================================================
+# PORTFOLIO STATE VIEWS (Etap 4)
+# =============================================================================
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def portfolio_state_view(request):
+    """
+    Get current portfolio state for user's exchange account.
+
+    Fast read-only endpoint that returns the current PortfolioState without
+    making any API calls to exchanges. Returns 404 if state doesn't exist.
+
+    Query parameters:
+    - connector_id (optional): Exchange account ID. If not provided, uses user's active account
+
+    Returns:
+    - 200: Portfolio state data
+    - 404: ERROR_NO_STATE - state not found for connector
+    - 403: Connector doesn't belong to user
+    - 400: Multiple active connectors (need to specify connector_id)
+    """
+    import logging
+
+    from botbalance.exchanges.models import ExchangeAccount
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        # Get connector_id parameter
+        connector_id = request.query_params.get("connector_id")
+
+        if connector_id:
+            # Validate connector belongs to user
+            try:
+                exchange_account = ExchangeAccount.objects.get(
+                    id=connector_id, user=request.user
+                )
+            except ExchangeAccount.DoesNotExist:
+                return Response(
+                    {
+                        "status": "error",
+                        "message": "Exchange account not found or doesn't belong to you",
+                        "error_code": "CONNECTOR_NOT_FOUND",
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+        else:
+            # Auto-select user's active exchange account
+            active_accounts = ExchangeAccount.objects.filter(
+                user=request.user, is_active=True
+            )
+
+            if not active_accounts.exists():
+                return Response(
+                    {
+                        "status": "error",
+                        "message": "No active exchange accounts found",
+                        "error_code": "NO_ACTIVE_CONNECTORS",
+                    },
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            elif active_accounts.count() > 1:
+                return Response(
+                    {
+                        "status": "error",
+                        "message": f"Multiple active exchange accounts found ({active_accounts.count()}). Please specify connector_id parameter.",
+                        "error_code": "MULTIPLE_ACTIVE_CONNECTORS",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            exchange_account = cast(
+                "ExchangeAccount", active_accounts.first()
+            )  # Guaranteed by count() == 1 check above
+
+        # Get PortfolioState for the connector
+        try:
+            portfolio_state = PortfolioState.objects.get(
+                exchange_account=exchange_account
+            )
+        except PortfolioState.DoesNotExist:
+            return Response(
+                {
+                    "status": "error",
+                    "message": f"Portfolio state not found for connector '{exchange_account.name}'",
+                    "error_code": "ERROR_NO_STATE",
+                    "connector_id": exchange_account.id,
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Convert to API response format
+        if portfolio_state is None:  # mypy safety check
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Portfolio state not found",
+                    "error_code": "ERROR_NO_STATE",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        state_data = portfolio_state.to_summary_dict()
+
+        response_data = {
+            "status": "success",
+            "state": state_data,
+        }
+
+        serializer = PortfolioStateResponseSerializer(data=response_data)
+        if serializer.is_valid():
+            logger.info(
+                f"Portfolio state retrieved for user {sanitize_for_logs(request.user.username)}, "
+                f"connector {exchange_account.name}"
+            )
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        else:
+            logger.error(f"Serialization errors: {serializer.errors}")
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Failed to serialize state data",
+                    "error_code": "SERIALIZATION_ERROR",
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error in portfolio_state_view: {e}", exc_info=True)
+
+        return Response(
+            {
+                "status": "error",
+                "message": "Failed to get portfolio state due to an internal error",
+                "error_code": "PORTFOLIO_STATE_ERROR",
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def refresh_portfolio_state_view(request):
+    """
+    Force refresh/create portfolio state for user's exchange account.
+
+    Makes API calls to exchange and updates the PortfolioState. Can fail with
+    various error codes based on the state calculation result.
+
+    Request body:
+    - connector_id (optional): Exchange account ID
+
+    Returns:
+    - 200: State refreshed successfully
+    - 409: NO_ACTIVE_STRATEGY - no active strategy for connector
+    - 422: ERROR_PRICING - unable to get prices for some assets
+    - 429: TOO_MANY_REQUESTS - rate limit exceeded
+    - 403: Connector doesn't belong to user
+    """
+    import asyncio
+    import logging
+
+    from botbalance.exchanges.models import ExchangeAccount
+    from botbalance.exchanges.portfolio_service import portfolio_service
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        # Validate request data
+        request_serializer = RefreshStateRequestSerializer(data=request.data)
+        if not request_serializer.is_valid():
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Invalid request data",
+                    "error_code": "INVALID_REQUEST",
+                    "errors": request_serializer.errors,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        connector_id = request_serializer.validated_data.get("connector_id")
+
+        # Resolve exchange account
+        if connector_id:
+            # Validate connector belongs to user
+            try:
+                exchange_account = ExchangeAccount.objects.get(
+                    id=connector_id, user=request.user
+                )
+            except ExchangeAccount.DoesNotExist:
+                return Response(
+                    {
+                        "status": "error",
+                        "message": "Exchange account not found or doesn't belong to you",
+                        "error_code": "CONNECTOR_NOT_FOUND",
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+        else:
+            # Auto-select user's active exchange account
+            active_accounts = ExchangeAccount.objects.filter(
+                user=request.user, is_active=True
+            )
+
+            if not active_accounts.exists():
+                return Response(
+                    {
+                        "status": "error",
+                        "message": "No active exchange accounts found",
+                        "error_code": "NO_ACTIVE_CONNECTORS",
+                    },
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            elif active_accounts.count() > 1:
+                return Response(
+                    {
+                        "status": "error",
+                        "message": f"Multiple active exchange accounts found ({active_accounts.count()}). Please specify connector_id parameter.",
+                        "error_code": "MULTIPLE_ACTIVE_CONNECTORS",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            exchange_account = cast(
+                "ExchangeAccount", active_accounts.first()
+            )  # Guaranteed by count() == 1 check above
+
+        # Refresh portfolio state
+        portfolio_state, error_code = asyncio.run(
+            portfolio_service.upsert_portfolio_state(exchange_account, source="manual")
+        )
+
+        if error_code:
+            # Handle specific error cases
+            if error_code == "NO_ACTIVE_STRATEGY":
+                return Response(
+                    {
+                        "status": "error",
+                        "message": "No active strategy found for connector",
+                        "error_code": "NO_ACTIVE_STRATEGY",
+                        "connector_id": exchange_account.id,
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+            elif error_code == "ERROR_PRICING":
+                return Response(
+                    {
+                        "status": "error",
+                        "message": "Unable to get prices for some assets",
+                        "error_code": "ERROR_PRICING",
+                        "connector_id": exchange_account.id,
+                        # TODO: Add missing_prices list from actual error
+                    },
+                    status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                )
+            elif error_code == "TOO_MANY_REQUESTS":
+                return Response(
+                    {
+                        "status": "error",
+                        "message": "Rate limit exceeded. Please wait before requesting refresh again",
+                        "error_code": "TOO_MANY_REQUESTS",
+                        "retry_after_seconds": 5,
+                        "connector_id": exchange_account.id,
+                    },
+                    status=status.HTTP_429_TOO_MANY_REQUESTS,
+                )
+            else:
+                # Generic error
+                return Response(
+                    {
+                        "status": "error",
+                        "message": "Failed to refresh portfolio state",
+                        "error_code": error_code,
+                        "connector_id": exchange_account.id,
+                    },
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+        # Success - return updated state
+        if portfolio_state is None:  # Should not happen, but mypy check
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Failed to create portfolio state",
+                    "error_code": "INTERNAL_ERROR",
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        state_data = portfolio_state.to_summary_dict()
+
+        response_data = {
+            "status": "success",
+            "state": state_data,
+        }
+
+        serializer = RefreshStateResponseSerializer(data=response_data)
+        if serializer.is_valid():
+            nav_info = ""
+            if portfolio_state:  # mypy safety check
+                nav_info = (
+                    f": NAV={portfolio_state.nav_quote} {portfolio_state.quote_asset}"
+                )
+            logger.info(
+                f"Portfolio state refreshed for user {sanitize_for_logs(request.user.username)}, "
+                f"connector {exchange_account.name}{nav_info}"
+            )
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        else:
+            logger.error(f"Serialization errors: {serializer.errors}")
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Failed to serialize response",
+                    "error_code": "SERIALIZATION_ERROR",
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error in refresh_portfolio_state_view: {e}", exc_info=True)
+
+        return Response(
+            {
+                "status": "error",
+                "message": "Failed to refresh portfolio state due to an internal error",
+                "error_code": "REFRESH_STATE_ERROR",
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )

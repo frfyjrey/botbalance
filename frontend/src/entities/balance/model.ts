@@ -68,3 +68,24 @@ export const getBalancesCount = (
 ): number => {
   return response?.balances?.length || 0;
 };
+
+/**
+ * Check if the API response indicates fallback data was used due to external API issues
+ */
+export const isFallbackData = (
+  response: BalancesResponse | undefined,
+): boolean => {
+  return response?.details?.fallback_attempted === true;
+};
+
+/**
+ * Get user-friendly message explaining data freshness status
+ */
+export const getDataFreshnessMessage = (
+  response: BalancesResponse | undefined,
+): string | null => {
+  if (isFallbackData(response)) {
+    return '⚠️ Данные могут быть неактуальными из-за временных проблем с внешними сервисами';
+  }
+  return null;
+};

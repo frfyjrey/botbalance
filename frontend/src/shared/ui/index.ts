@@ -9,3 +9,4 @@ export {
   CardContent,
 } from './Card';
 export { Label } from './Label';
+export { Badge, badgeVariants, type BadgeProps } from './badge';

@@ -127,8 +127,7 @@ class TestBinanceSpotTestnetSmoke:
     """Smoke-test for Binance Spot testnet if keys are provided via env and enabled."""
 
     @pytest.mark.skipif(
-        __import__("os").getenv("USE_LIVE_EXCHANGE", "false").lower() != "true"
-        or __import__("os").getenv("EXCHANGE_ENV", "mock").lower() != "testnet"
+        __import__("os").getenv("EXCHANGE_ENV", "mock").lower() != "live"
         or __import__("os").getenv("ENABLE_SYSTEM_TESTNET_ACCOUNT", "false").lower()
         != "true"
         or not __import__("os").getenv("BINANCE_SPOT_TESTNET_API_KEY")
@@ -152,18 +151,46 @@ class TestBinanceSpotTestnetSmoke:
         async def run_flow():
             symbol = "BTCUSDT"
             await adapter.ping()
+
+            # Use normalization functions to prepare proper values
+            from botbalance.exchanges.normalization import (
+                ExchangeFilters,
+                calculate_quote_amount,
+                normalize_price,
+                normalize_quantity,
+            )
+
+            # Get exchange filters and normalize order parameters
+            filters_dict = adapter.get_exchange_filters(symbol)
+            filters = ExchangeFilters(
+                tick_size=filters_dict["tick_size"],
+                lot_size=filters_dict["lot_size"],
+                min_notional=filters_dict["min_notional"],
+            )
+
+            raw_price = Decimal("30000")
+            raw_quote_amount = Decimal("10")
+
+            # Normalize values
+            normalized_price = normalize_price(raw_price, filters)
+            raw_quantity = raw_quote_amount / normalized_price
+            normalized_quantity = normalize_quantity(raw_quantity, filters)
+            normalized_quote_amount = calculate_quote_amount(
+                normalized_price, normalized_quantity
+            )
+
             order = await adapter.place_order(
                 account="spot",
                 symbol=symbol,
                 side="buy",
-                limit_price=Decimal("30000"),
-                quote_amount=Decimal("10"),
+                limit_price=normalized_price,
+                quote_amount=normalized_quote_amount,
                 client_order_id="smoke_coid_demo",
             )
             assert order["id"]
             open_orders = await adapter.get_open_orders(symbol=symbol)
             assert isinstance(open_orders, list)
-            ok = await adapter.cancel_order(order["id"])
+            ok = await adapter.cancel_order(symbol=symbol, order_id=order["id"])
             assert ok is True
 
         asyncio.run(run_flow())

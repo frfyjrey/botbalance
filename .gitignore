@@ -116,6 +116,7 @@ dump.rdb
 
 # Celery
 celerybeat-schedule*
+
 # GCP service account keys
 *.json
 github-actions-key.json

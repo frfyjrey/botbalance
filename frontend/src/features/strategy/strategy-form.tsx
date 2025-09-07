@@ -8,12 +8,14 @@ import {
   useStrategy,
   useCreateStrategy,
   useUpdateStrategy,
-  useActivateStrategy,
+  usePatchStrategy,
+  useDeleteStrategy,
+  useStrategyConstants,
   type StrategyFormData,
   type AllocationFormData,
   DEFAULT_STRATEGY_VALUES,
-  SUPPORTED_ASSETS,
 } from '@entities/strategy';
+import { useExchangeAccounts } from '@entities/exchange';
 
 interface StrategyFormProps {
   onSuccess?: () => void;
@@ -29,18 +31,31 @@ export const StrategyForm: React.FC<StrategyFormProps> = ({
   // API hooks
   const { data: strategyResponse, isLoading: isLoadingStrategy } =
     useStrategy();
+  const { data: exchangeAccounts, isLoading: isLoadingAccounts } =
+    useExchangeAccounts();
+  const { data: constants, isLoading: isLoadingConstants } =
+    useStrategyConstants();
   const createStrategy = useCreateStrategy();
   const updateStrategy = useUpdateStrategy();
-  const activateStrategy = useActivateStrategy();
+  const patchStrategy = usePatchStrategy();
+  const deleteStrategy = useDeleteStrategy();
 
   // Form state
   const [formData, setFormData] = useState<StrategyFormData>({
     name: DEFAULT_STRATEGY_VALUES.name,
     order_size_pct: DEFAULT_STRATEGY_VALUES.order_size_pct,
-    min_delta_quote: DEFAULT_STRATEGY_VALUES.min_delta_quote,
+    min_delta_pct: DEFAULT_STRATEGY_VALUES.min_delta_pct,
     order_step_pct: DEFAULT_STRATEGY_VALUES.order_step_pct,
     switch_cancel_buffer_pct: DEFAULT_STRATEGY_VALUES.switch_cancel_buffer_pct,
-    allocations: [],
+    quote_asset: DEFAULT_STRATEGY_VALUES.quote_asset,
+    exchange_account: DEFAULT_STRATEGY_VALUES.exchange_account,
+    allocations: [
+      // Automatically include base currency with default 20%
+      {
+        asset: DEFAULT_STRATEGY_VALUES.quote_asset,
+        target_percentage: 20,
+      },
+    ],
   });
 
   const [newAllocation, setNewAllocation] = useState<AllocationFormData>({
@@ -57,9 +72,11 @@ export const StrategyForm: React.FC<StrategyFormProps> = ({
       setFormData({
         name: strategy.name,
         order_size_pct: parseFloat(strategy.order_size_pct),
-        min_delta_quote: parseFloat(strategy.min_delta_quote),
+        min_delta_pct: parseFloat(strategy.min_delta_pct || '0.1'),
         order_step_pct: parseFloat(strategy.order_step_pct),
         switch_cancel_buffer_pct: parseFloat(strategy.switch_cancel_buffer_pct),
+        quote_asset: strategy.quote_asset,
+        exchange_account: strategy.exchange_account,
         allocations: strategy.allocations.map(alloc => ({
           asset: alloc.asset,
           target_percentage: parseFloat(alloc.target_percentage),
@@ -83,8 +100,11 @@ export const StrategyForm: React.FC<StrategyFormProps> = ({
       });
     }
 
-    if (formData.min_delta_quote <= 0) {
-      newErrors.min_delta_quote = t('common:validation.positive_number');
+    if (formData.min_delta_pct <= 0 || formData.min_delta_pct > 10) {
+      newErrors.min_delta_pct = t('common:validation.percentage_range', {
+        min: 0.01,
+        max: 10.0,
+      });
     }
 
     if (formData.order_step_pct <= 0 || formData.order_step_pct > 5) {
@@ -105,6 +125,27 @@ export const StrategyForm: React.FC<StrategyFormProps> = ({
           max: 1.0,
         },
       );
+    }
+
+    // Validate quote asset
+    if (!formData.quote_asset) {
+      newErrors.quote_asset = 'Base currency is required';
+    } else if (
+      constants?.constants.quote_assets &&
+      !constants.constants.quote_assets.includes(formData.quote_asset)
+    ) {
+      newErrors.quote_asset = 'Invalid base currency';
+    }
+
+    // Validate exchange account (required for new strategies, not when editing)
+    if (!isExistingStrategy && !formData.exchange_account) {
+      newErrors.exchange_account = 'Exchange account is required';
+    }
+
+    // Check if there are active accounts when creating new strategy
+    if (!isExistingStrategy && !hasActiveAccounts) {
+      newErrors.exchange_account =
+        'No active exchange accounts available. Please connect an exchange account first.';
     }
 
     if (formData.allocations.length === 0) {
@@ -129,6 +170,20 @@ export const StrategyForm: React.FC<StrategyFormProps> = ({
         'Duplicate assets found. Each asset can only appear once.';
     }
 
+    // Validate base currency allocation (minimum 10%)
+    if (formData.quote_asset) {
+      const baseCurrencyAllocation = formData.allocations.find(
+        alloc =>
+          alloc.asset.toUpperCase() === formData.quote_asset.toUpperCase(),
+      );
+
+      if (!baseCurrencyAllocation) {
+        newErrors.base_currency_missing = `${formData.quote_asset} (base currency) must be included in allocations for cash management.`;
+      } else if (baseCurrencyAllocation.target_percentage < 10) {
+        newErrors.base_currency_minimum = `${formData.quote_asset} (base currency) must have at least 10% allocation for cash management.`;
+      }
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -142,6 +197,32 @@ export const StrategyForm: React.FC<StrategyFormProps> = ({
     // Clear field error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
+    }
+  };
+
+  // Handle quote asset change - clear all allocations except new base currency
+  const handleQuoteAssetChange = (newQuoteAsset: string) => {
+    if (!newQuoteAsset) return;
+
+    setFormData(prev => {
+      // Clear all allocations and add only the new base currency with 20%
+      const updatedAllocations = [
+        {
+          asset: newQuoteAsset.toUpperCase(),
+          target_percentage: 20,
+        },
+      ];
+
+      return {
+        ...prev,
+        quote_asset: newQuoteAsset,
+        allocations: updatedAllocations,
+      };
+    });
+
+    // Clear field error
+    if (errors.quote_asset) {
+      setErrors(prev => ({ ...prev, quote_asset: '' }));
     }
   };
 
@@ -168,8 +249,38 @@ export const StrategyForm: React.FC<StrategyFormProps> = ({
     setErrors(prev => ({ ...prev, new_allocation: '' }));
   };
 
+  // Handle allocation percentage change without immediate validation
+  const handleAllocationPercentageChange = (
+    index: number,
+    newPercentage: number,
+  ) => {
+    // Simply update the percentage without immediate validation
+    // Validation will happen on form submit
+    setFormData(prev => ({
+      ...prev,
+      allocations: prev.allocations.map((alloc, i) =>
+        i === index ? { ...alloc, target_percentage: newPercentage } : alloc,
+      ),
+    }));
+  };
+
   // Handle allocation removal
   const handleRemoveAllocation = (index: number) => {
+    const allocationToRemove = formData.allocations[index];
+
+    // Prevent removal of base currency
+    if (
+      allocationToRemove &&
+      formData.quote_asset &&
+      allocationToRemove.asset.toUpperCase() ===
+        formData.quote_asset.toUpperCase()
+    ) {
+      alert(
+        `Cannot remove ${formData.quote_asset} - it's the base currency for cash management. Change the base currency first if needed.`,
+      );
+      return;
+    }
+
     setFormData(prev => ({
       ...prev,
       allocations: prev.allocations.filter((_, i) => i !== index),
@@ -185,14 +296,38 @@ export const StrategyForm: React.FC<StrategyFormProps> = ({
     }
 
     try {
+      // Ensure base currency is always included in allocations
+      const allocationsToSend = [...formData.allocations];
+      const hasBaseCurrency = allocationsToSend.some(
+        alloc =>
+          alloc.asset.toUpperCase() === formData.quote_asset.toUpperCase(),
+      );
+
+      if (!hasBaseCurrency) {
+        // Add base currency with minimum 10% if somehow missing
+        allocationsToSend.unshift({
+          asset: formData.quote_asset.toUpperCase(),
+          target_percentage: Math.max(
+            10,
+            100 -
+              allocationsToSend.reduce(
+                (sum, a) => sum + a.target_percentage,
+                0,
+              ),
+          ),
+        });
+      }
+
       // Prepare data for API
       const strategyData = {
         name: formData.name,
         order_size_pct: formData.order_size_pct.toString(),
-        min_delta_quote: formData.min_delta_quote.toString(),
+        min_delta_pct: formData.min_delta_pct.toString(),
         order_step_pct: formData.order_step_pct.toString(),
         switch_cancel_buffer_pct: formData.switch_cancel_buffer_pct.toString(),
-        allocations: formData.allocations.map(alloc => ({
+        quote_asset: formData.quote_asset,
+        exchange_account: formData.exchange_account,
+        allocations: allocationsToSend.map(alloc => ({
           asset: alloc.asset.toUpperCase(),
           target_percentage: alloc.target_percentage.toString(),
         })),
@@ -225,7 +360,7 @@ export const StrategyForm: React.FC<StrategyFormProps> = ({
     if (!strategyResponse?.strategy) return;
 
     try {
-      await activateStrategy.mutateAsync({
+      await patchStrategy.mutateAsync({
         is_active: !strategyResponse.strategy.is_active,
       });
     } catch (error) {
@@ -233,9 +368,37 @@ export const StrategyForm: React.FC<StrategyFormProps> = ({
     }
   };
 
+  // Handle strategy deletion
+  const handleDeleteStrategy = async () => {
+    if (!strategyResponse?.strategy) return;
+
+    const confirmed = window.confirm(
+      `Are you sure you want to delete the strategy "${strategyResponse.strategy.name}"? This action cannot be undone.`,
+    );
+
+    if (!confirmed) return;
+
+    try {
+      await deleteStrategy.mutateAsync();
+      // Strategy will be removed from cache automatically by the hook
+    } catch (error) {
+      console.error('Failed to delete strategy:', error);
+    }
+  };
+
   const isLoading =
-    isLoadingStrategy || createStrategy.isPending || updateStrategy.isPending;
+    isLoadingStrategy ||
+    isLoadingAccounts ||
+    isLoadingConstants ||
+    createStrategy.isPending ||
+    updateStrategy.isPending ||
+    patchStrategy.isPending ||
+    deleteStrategy.isPending;
   const isExistingStrategy = !!strategyResponse?.strategy;
+
+  // Filter active exchange accounts
+  const activeAccounts = exchangeAccounts?.filter(acc => acc.is_active) || [];
+  const hasActiveAccounts = activeAccounts.length > 0;
 
   return (
     <div className={`card-github ${className}`}>
@@ -252,6 +415,44 @@ export const StrategyForm: React.FC<StrategyFormProps> = ({
         <p className="text-sm mt-1" style={{ color: 'rgb(var(--fg-muted))' }}>
           Configure your portfolio target allocations and rebalancing settings
         </p>
+
+        {/* Strategy Info - only show for existing strategies */}
+        {isExistingStrategy && strategyResponse?.strategy && (
+          <div className="mt-3 flex flex-wrap gap-4 text-sm">
+            <div className="flex items-center gap-2">
+              <span style={{ color: 'rgb(var(--fg-muted))' }}>Status:</span>
+              <span
+                className={`px-2 py-1 rounded text-xs font-medium ${
+                  strategyResponse.strategy.is_active
+                    ? 'bg-green-100 text-green-800'
+                    : 'bg-gray-100 text-gray-800'
+                }`}
+              >
+                {strategyResponse.strategy.is_active ? 'Active' : 'Inactive'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span style={{ color: 'rgb(var(--fg-muted))' }}>Base Asset:</span>
+              <span
+                className="font-mono font-medium"
+                style={{ color: 'rgb(var(--fg-default))' }}
+              >
+                {strategyResponse.strategy.quote_asset}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span style={{ color: 'rgb(var(--fg-muted))' }}>
+                Exchange Account ID:
+              </span>
+              <span
+                className="font-mono"
+                style={{ color: 'rgb(var(--fg-default))' }}
+              >
+                {strategyResponse.strategy.exchange_account}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       <form onSubmit={handleSubmit} className="p-6 space-y-6">
@@ -268,6 +469,87 @@ export const StrategyForm: React.FC<StrategyFormProps> = ({
           />
           {errors.name && <p className="text-sm text-red-600">{errors.name}</p>}
         </div>
+
+        {/* Exchange Account Selection (only for new strategies) */}
+        {!isExistingStrategy && (
+          <div className="space-y-2">
+            <Label htmlFor="exchange-account">Exchange Account *</Label>
+            {!hasActiveAccounts ? (
+              <div className="p-3 rounded border-2 border-dashed border-orange-300 bg-orange-50">
+                <p className="text-sm text-orange-700 mb-2">
+                  No active exchange accounts found.
+                </p>
+                <p className="text-xs text-orange-600">
+                  Please connect at least one exchange account before creating a
+                  strategy.
+                </p>
+              </div>
+            ) : (
+              <select
+                id="exchange-account"
+                value={formData.exchange_account || ''}
+                onChange={e =>
+                  handleFieldChange(
+                    'exchange_account',
+                    parseInt(e.target.value) || null,
+                  )
+                }
+                className="w-full px-3 py-2 border rounded-md text-sm"
+                style={{
+                  borderColor: 'rgb(var(--border))',
+                  backgroundColor: 'rgb(var(--canvas-default))',
+                  color: 'rgb(var(--fg-default))',
+                }}
+                disabled={isLoading}
+                required
+              >
+                <option value="">Select exchange account...</option>
+                {activeAccounts.map(account => (
+                  <option key={account.id} value={account.id}>
+                    {account.name} ({account.exchange.toUpperCase()} -{' '}
+                    {account.account_type})
+                  </option>
+                ))}
+              </select>
+            )}
+            {errors.exchange_account && (
+              <p className="text-sm text-red-600">{errors.exchange_account}</p>
+            )}
+          </div>
+        )}
+
+        {/* Base Currency Selection (only for new strategies) */}
+        {!isExistingStrategy && (
+          <div className="space-y-2">
+            <Label htmlFor="quote-asset">Base Currency *</Label>
+            <select
+              id="quote-asset"
+              value={formData.quote_asset}
+              onChange={e => handleQuoteAssetChange(e.target.value)}
+              className="w-full px-3 py-2 border rounded-md text-sm"
+              style={{
+                borderColor: 'rgb(var(--border))',
+                backgroundColor: 'rgb(var(--canvas-default))',
+                color: 'rgb(var(--fg-default))',
+              }}
+              disabled={isLoading}
+              required
+            >
+              {constants?.constants.quote_assets.map(asset => (
+                <option key={asset} value={asset}>
+                  {asset}
+                </option>
+              )) || <option value="">Loading...</option>}
+            </select>
+            <p className="text-xs text-gray-500">
+              This currency will be automatically included in your allocations
+              for cash management.
+            </p>
+            {errors.quote_asset && (
+              <p className="text-sm text-red-600">{errors.quote_asset}</p>
+            )}
+          </div>
+        )}
 
         {/* Order Size Percentage */}
         <div className="space-y-2">
@@ -296,29 +578,30 @@ export const StrategyForm: React.FC<StrategyFormProps> = ({
           </p>
         </div>
 
-        {/* Minimum Delta */}
+        {/* Minimum Delta Percentage */}
         <div className="space-y-2">
-          <Label htmlFor="min-delta">Minimum Delta (USDT)</Label>
+          <Label htmlFor="min-delta-pct">Minimum Delta (%)</Label>
           <Input
-            id="min-delta"
+            id="min-delta-pct"
             type="number"
             min="0.01"
+            max="10.00"
             step="0.01"
-            value={formData.min_delta_quote}
+            value={formData.min_delta_pct}
             onChange={e =>
               handleFieldChange(
-                'min_delta_quote',
+                'min_delta_pct',
                 parseFloat(e.target.value) || 0,
               )
             }
-            placeholder="10.00"
+            placeholder="0.10"
             disabled={isLoading}
           />
-          {errors.min_delta_quote && (
-            <p className="text-sm text-red-600">{errors.min_delta_quote}</p>
+          {errors.min_delta_pct && (
+            <p className="text-sm text-red-600">{errors.min_delta_pct}</p>
           )}
           <p className="text-xs" style={{ color: 'rgb(var(--fg-muted))' }}>
-            Minimum change in USDT required to trigger rebalancing
+            Minimum percentage change of target value (0.1% = 999 → 1001 USDT)
           </p>
         </div>
 
@@ -404,9 +687,28 @@ export const StrategyForm: React.FC<StrategyFormProps> = ({
               <span className="font-mono text-sm min-w-16">
                 {allocation.asset}
               </span>
-              <span className="flex-1 text-sm">
-                {allocation.target_percentage}%
-              </span>
+              <div className="flex-1">
+                <input
+                  type="number"
+                  min="0.01"
+                  max="100"
+                  step="0.01"
+                  value={allocation.target_percentage || ''}
+                  onChange={e =>
+                    handleAllocationPercentageChange(
+                      index,
+                      parseFloat(e.target.value) || 0,
+                    )
+                  }
+                  className="w-20 px-2 py-1 border rounded text-sm"
+                  style={{
+                    borderColor: 'rgb(var(--border))',
+                    backgroundColor: 'rgb(var(--canvas-default))',
+                    color: 'rgb(var(--fg-default))',
+                  }}
+                />
+                <span className="text-sm ml-1">%</span>
+              </div>
               <Button
                 type="button"
                 onClick={() => handleRemoveAllocation(index)}
@@ -437,11 +739,11 @@ export const StrategyForm: React.FC<StrategyFormProps> = ({
                 disabled={isLoading}
               >
                 <option value="">Select asset...</option>
-                {SUPPORTED_ASSETS.map(asset => (
+                {constants?.constants.allocation_assets.map(asset => (
                   <option key={asset} value={asset}>
                     {asset}
                   </option>
-                ))}
+                )) || null}
               </select>
             </div>
 
@@ -493,6 +795,18 @@ export const StrategyForm: React.FC<StrategyFormProps> = ({
           {errors.duplicate_assets && (
             <p className="text-sm text-red-600">{errors.duplicate_assets}</p>
           )}
+
+          {errors.base_currency_missing && (
+            <p className="text-sm text-red-600">
+              {errors.base_currency_missing}
+            </p>
+          )}
+
+          {errors.base_currency_minimum && (
+            <p className="text-sm text-red-600">
+              {errors.base_currency_minimum}
+            </p>
+          )}
         </div>
 
         {/* Submit Error */}
@@ -523,22 +837,33 @@ export const StrategyForm: React.FC<StrategyFormProps> = ({
           </Button>
 
           {isExistingStrategy && (
-            <Button
-              type="button"
-              onClick={handleToggleActive}
-              className={`btn-github ${
-                strategyResponse.strategy?.is_active
-                  ? 'btn-github-danger'
-                  : 'btn-github-secondary'
-              }`}
-              disabled={activateStrategy.isPending}
-            >
-              {activateStrategy.isPending
-                ? 'Updating...'
-                : strategyResponse.strategy?.is_active
-                  ? 'Deactivate'
-                  : 'Activate'}
-            </Button>
+            <>
+              <Button
+                type="button"
+                onClick={handleToggleActive}
+                className={`btn-github ${
+                  strategyResponse.strategy?.is_active
+                    ? 'btn-github-danger'
+                    : 'btn-github-secondary'
+                }`}
+                disabled={patchStrategy.isPending}
+              >
+                {patchStrategy.isPending
+                  ? 'Updating...'
+                  : strategyResponse.strategy?.is_active
+                    ? 'Deactivate'
+                    : 'Activate'}
+              </Button>
+
+              <Button
+                type="button"
+                onClick={handleDeleteStrategy}
+                className="btn-github btn-github-danger"
+                disabled={deleteStrategy.isPending}
+              >
+                {deleteStrategy.isPending ? 'Deleting...' : 'Delete Strategy'}
+              </Button>
+            </>
           )}
         </div>
       </form>

@@ -23,6 +23,8 @@ export const ROUTES = {
   ADMIN_DASHBOARD: '/admin-dashboard',
   PROFILE: '/profile',
   TASKS: '/tasks',
+  ORDERS: '/orders',
+  EXCHANGES: '/exchanges',
 } as const;
 
 // API Endpoints
@@ -39,6 +41,12 @@ export const API_ENDPOINTS = {
   TASKS_ECHO: '/api/tasks/echo/',
   TASKS_HEARTBEAT: '/api/tasks/heartbeat/',
   TASKS_STATUS: '/api/tasks/status/',
+
+  // Orders
+  ORDERS: '/api/me/orders/',
+  ORDER_CANCEL: (id: number) => `/api/me/orders/${id}/cancel/`,
+  ORDERS_CANCEL_ALL: (symbol: string) =>
+    `/api/me/orders/cancel_all/?symbol=${encodeURIComponent(symbol)}`,
 } as const;
 
 // Query Keys for TanStack Query
@@ -50,9 +58,11 @@ export const QUERY_KEYS = {
   TASK_STATUS: 'task-status',
   BALANCES: 'balances',
   PORTFOLIO_SUMMARY: 'portfolio-summary',
+  PORTFOLIO_STATE: 'portfolio-state', // New PortfolioState API
   STRATEGY: 'strategy',
   REBALANCE_PLAN: 'rebalance-plan',
   ORDERS: 'orders',
+  EXCHANGE_ACCOUNTS: 'exchange-accounts',
 } as const;
 
 // Theme
@@ -98,3 +108,5 @@ export const ENV = {
 
 export const IS_DEV = import.meta.env.DEV;
 export const IS_PROD = import.meta.env.PROD;
+
+// Feature Flags - removed FRONTEND_STATE_API (State API is now default)

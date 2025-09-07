@@ -44,7 +44,7 @@ class TestStrategyRebalance(APITestCase):
             user=self.user,
             name="My Strategy",
             order_size_pct=Decimal("10.00"),
-            min_delta_quote=Decimal("10.00"),
+            min_delta_pct=Decimal("0.10"),
             order_step_pct=Decimal("0.40"),
             is_active=False,
         )

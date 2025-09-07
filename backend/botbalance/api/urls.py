@@ -26,7 +26,7 @@ task_patterns = [
 # User account management URLs
 me_patterns = [
     path("balances/", views.user_balances_view, name="balances"),
-    path("portfolio/summary/", views.portfolio_summary_view, name="portfolio_summary"),
+    # portfolio/summary/ endpoint removed - use portfolio/state/ instead
     path(
         "portfolio/snapshots/",
         views.portfolio_snapshots_list_view,
@@ -47,8 +47,29 @@ me_patterns = [
         views.latest_portfolio_snapshot_view,
         name="latest_portfolio_snapshot",
     ),
+    # Portfolio State endpoints (Etap 4)
+    path("portfolio/state/", views.portfolio_state_view, name="portfolio_state"),
+    path(
+        "portfolio/state/refresh/",
+        views.refresh_portfolio_state_view,
+        name="refresh_portfolio_state",
+    ),
     path("strategy/", include("strategies.urls", namespace="strategy")),
     path("orders/", views.user_orders_view, name="orders"),
+    path("orders/<int:order_id>/cancel/", views.cancel_order_view, name="order_cancel"),
+    path("orders/cancel_all/", views.cancel_all_orders_view, name="orders_cancel_all"),
+    # Exchange accounts management
+    path("exchanges/", views.exchange_accounts_view, name="exchange_accounts"),
+    path(
+        "exchanges/<int:account_id>/",
+        views.exchange_account_detail_view,
+        name="exchange_account_detail",
+    ),
+    path(
+        "exchanges/<int:account_id>/check/",
+        views.check_exchange_account_view,
+        name="check_exchange_account",
+    ),
 ]
 
 urlpatterns = [

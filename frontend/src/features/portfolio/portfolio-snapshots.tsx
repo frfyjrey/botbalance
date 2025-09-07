@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@shared/ui/Button';
 import { apiClient } from '@shared/lib/api';
 import {
@@ -36,7 +36,7 @@ export const PortfolioSnapshots = () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await apiClient.getPortfolioSnapshots({ limit: 20 });
+      const response = await apiClient.getPortfolioSnapshots({ limit: 100 });
       if (response.status === 'success') {
         setSnapshots((response.snapshots as Snapshot[]) || []);
       } else {
@@ -107,61 +107,43 @@ export const PortfolioSnapshots = () => {
     return `${parseFloat(value).toFixed(2)} ${currency}`;
   };
 
-  const formatShortDate = (isoString: string) => {
-    try {
-      const date = new Date(isoString);
-      if (isNaN(date.getTime())) {
-        return '--';
-      }
-      return `${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')}`;
-    } catch {
-      return '--';
-    }
-  };
+  // Данные для графика: все доступные снепшоты, ось X = numeric timestamp (time scale)
+  const chartData = useMemo(() => {
+    if (!snapshots.length) return [];
 
-  // Prepare data for recharts
-  const prepareChartData = () => {
-    if (snapshots.length === 0) return [];
+    const data = snapshots.map(s => {
+      const ts = new Date(s.ts).getTime();
+      return {
+        timestamp: ts,
+        nav: Number(s.nav_quote),
+        time: new Date(ts).toLocaleString('ru-RU'),
+        id: s.id,
+      };
+    });
 
-    return snapshots
-      .slice()
-      .reverse() // Oldest first for chart
-      .slice(-12) // Last 12 snapshots
-      .map((snapshot, index) => ({
-        date: formatShortDate(snapshot.ts),
-        nav: parseFloat(snapshot.nav_quote),
-        fullDate: formatDateTime(snapshot.ts),
-        isUp:
-          index === 0
-            ? true
-            : parseFloat(snapshot.nav_quote) >=
-              parseFloat(
-                snapshots.slice().reverse().slice(-12)[index - 1]?.nav_quote ||
-                  '0',
-              ),
-      }));
-  };
+    // Сортировка по возрастанию времени для корректного рисования линии слева направо
+    data.sort((a, b) => a.timestamp - b.timestamp);
+    return data;
+  }, [snapshots]);
 
-  const chartData = prepareChartData();
-
-  // Custom tooltip for recharts
-  const CustomTooltip = ({
+  // Простой tooltip
+  const renderTooltip = ({
     active,
     payload,
   }: {
     active?: boolean;
-    payload?: { payload: { nav: number; fullDate: string } }[];
+    payload?: Array<{ payload: { nav: number; time: string; id: number } }>;
   }) => {
-    if (active && payload && payload.length) {
-      const data = payload[0].payload;
-      return (
-        <div className="bg-gray-800 text-white px-3 py-2 rounded-lg shadow-lg">
-          <p className="font-semibold">${data.nav.toFixed(2)} USDT</p>
-          <p className="text-sm text-gray-300">{data.fullDate}</p>
-        </div>
-      );
-    }
-    return null;
+    if (!active || !payload?.[0]) return null;
+
+    const data = payload[0].payload;
+    return (
+      <div className="bg-gray-800 text-white px-3 py-2 rounded shadow">
+        <p className="font-semibold">${data.nav.toFixed(2)} USDT</p>
+        <p className="text-sm text-gray-300">{data.time}</p>
+        <p className="text-xs text-gray-400">ID: {data.id}</p>
+      </div>
+    );
   };
 
   return (
@@ -256,7 +238,16 @@ export const PortfolioSnapshots = () => {
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                 <XAxis
-                  dataKey="date"
+                  dataKey="timestamp"
+                  type="number"
+                  scale="time"
+                  domain={['auto', 'auto']}
+                  tickFormatter={value =>
+                    new Date(value).toLocaleTimeString('ru-RU', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })
+                  }
                   tick={{ fontSize: 12, fill: '#6B7280' }}
                   axisLine={{ stroke: '#D1D5DB' }}
                 />
@@ -265,7 +256,7 @@ export const PortfolioSnapshots = () => {
                   axisLine={{ stroke: '#D1D5DB' }}
                   tickFormatter={value => `$${value.toFixed(0)}`}
                 />
-                <Tooltip content={<CustomTooltip />} />
+                <Tooltip content={renderTooltip} />
                 <Area
                   type="monotone"
                   dataKey="nav"

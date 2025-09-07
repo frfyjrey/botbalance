@@ -114,6 +114,10 @@ export interface BalancesResponse {
   timestamp?: string;
   message?: string;
   error_code?: string;
+  details?: {
+    fallback_attempted?: boolean;
+    suggestion?: string;
+  };
 }
 
 // UI State types

@@ -10,6 +10,8 @@ const LoginPage = lazy(() => import('@pages/login'));
 const DashboardPage = lazy(() => import('@pages/dashboard'));
 const StrategyPage = lazy(() => import('@pages/strategy'));
 const AdminDashboardPage = lazy(() => import('@pages/admin-dashboard'));
+const OrdersPage = lazy(() => import('@pages/orders'));
+const ExchangesPage = lazy(() => import('@pages/exchanges'));
 
 // Loading fallback
 // eslint-disable-next-line react-refresh/only-export-components
@@ -56,6 +58,26 @@ export const router = createBrowserRouter([
       <ProtectedRoute>
         <SuspenseWrapper>
           <StrategyPage />
+        </SuspenseWrapper>
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: ROUTES.ORDERS,
+    element: (
+      <ProtectedRoute>
+        <SuspenseWrapper>
+          <OrdersPage />
+        </SuspenseWrapper>
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: ROUTES.EXCHANGES,
+    element: (
+      <ProtectedRoute>
+        <SuspenseWrapper>
+          <ExchangesPage />
         </SuspenseWrapper>
       </ProtectedRoute>
     ),
