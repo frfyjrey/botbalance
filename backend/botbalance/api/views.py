@@ -18,7 +18,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from botbalance.exchanges.models import ExchangeAccount, PortfolioState
+from botbalance.exchanges.models import PortfolioState
 from botbalance.tasks.tasks import echo_task, heartbeat_task, long_running_task
 from strategies.models import Order
 
@@ -1749,7 +1749,6 @@ def check_exchange_account_view(request, account_id):
                 public_ms = int((time.time() - public_start) * 1000)
                 public_success = True
             except Exception as e:
-                public_ms = int((time.time() - public_start) * 1000)
                 public_error = str(e)
 
             # 2. Signed endpoint test - get open orders with limit (requires auth)
@@ -1762,7 +1761,6 @@ def check_exchange_account_view(request, account_id):
                 signed_ms = int((time.time() - signed_start) * 1000)
                 signed_success = True
             except Exception as e:
-                signed_ms = int((time.time() - signed_start) * 1000)
                 signed_error = str(e)
 
             total_latency = int((time.time() - start_time) * 1000)
@@ -1850,7 +1848,9 @@ def check_exchange_account_view(request, account_id):
         import logging
 
         logger = logging.getLogger(__name__)
-        logger.error("Health check timeout for account %s", account_id)
+        logger.error(
+            "Health check timeout for account %s", sanitize_for_logs(str(account_id))
+        )
 
         account.update_health_error("TIMEOUT")
         return Response(
@@ -1865,7 +1865,11 @@ def check_exchange_account_view(request, account_id):
         import logging
 
         logger = logging.getLogger(__name__)
-        logger.error("Health check failed for account %s: %s", account_id, str(e))
+        logger.error(
+            "Health check failed for account %s: %s",
+            sanitize_for_logs(str(account_id)),
+            sanitize_for_logs(str(e)),
+        )
 
         account.update_health_error("CHECK_FAILED")
         return Response(

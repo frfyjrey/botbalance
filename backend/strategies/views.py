@@ -160,7 +160,9 @@ def _create_or_update_strategy(request):
                 elif hasattr(e, "messages"):
                     error_message = "Validation failed: multiple errors"
                 else:
-                    error_message = "Validation failed: invalid input"
+                    # Log the exception and avoid exposing details to user
+                    logger.error("Strategy validation exception: %s", e, exc_info=True)
+                    error_message = "Validation failed. Please check your input."
 
                 return Response(
                     {

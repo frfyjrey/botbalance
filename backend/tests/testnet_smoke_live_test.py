@@ -229,6 +229,8 @@ def test_direct_exchange_place_and_cancel_order():
     from botbalance.exchanges.models import ExchangeAccount
 
     # 1. Create test user and Binance testnet account
+    testnet_account = None
+    created = None
     try:
         # Create or get test user
         user, created = User.objects.get_or_create(
@@ -469,6 +471,7 @@ def test_cancel_all_btcusdt_orders():
     from botbalance.exchanges.models import ExchangeAccount
 
     # 1. Create/get testnet account (same as main test)
+    testnet_account = None
     try:
         user, created = User.objects.get_or_create(
             username="smoke_test_user",
@@ -501,6 +504,7 @@ def test_cancel_all_btcusdt_orders():
     print(f"✅ Using account: {testnet_account.name}")
 
     # 2. Get adapter
+    adapter = None
     try:
         adapter = testnet_account.get_adapter()
     except Exception as e:
