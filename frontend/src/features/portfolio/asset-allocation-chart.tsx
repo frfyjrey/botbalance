@@ -1,14 +1,9 @@
 import React from 'react';
 import { formatCurrencyUSD, formatNumberEnUS } from '@shared/lib/utils';
 import { useTranslation } from 'react-i18next';
-import { Button } from '@shared/ui/Button';
 
 // Using GitHub-style card design like BalancesCard
-import {
-  usePortfolioData,
-  useRefreshPortfolioState,
-  type PortfolioAsset,
-} from '@entities/portfolio';
+import { usePortfolioData, type PortfolioAsset } from '@entities/portfolio';
 
 interface AssetAllocationChartProps {
   className?: string;
@@ -99,7 +94,6 @@ export const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
 }) => {
   const { t } = useTranslation('dashboard');
   const { data: response, isLoading, error } = usePortfolioData();
-  const refreshPortfolioState = useRefreshPortfolioState();
 
   if (isLoading) {
     return (
@@ -180,26 +174,10 @@ export const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
             >
               Portfolio State Not Found
             </h4>
-            <p
-              className="text-sm mb-4"
-              style={{ color: 'rgb(var(--fg-muted))' }}
-            >
-              Create your portfolio state to see asset allocation chart.
+            <p className="text-sm" style={{ color: 'rgb(var(--fg-muted))' }}>
+              Portfolio state not available. Complete setup in Dashboard to see
+              asset allocation.
             </p>
-            <Button
-              onClick={() => refreshPortfolioState.mutate({})}
-              disabled={refreshPortfolioState.isPending}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md"
-            >
-              {refreshPortfolioState.isPending
-                ? 'Creating...'
-                : '🔄 Create Portfolio State'}
-            </Button>
-            {refreshPortfolioState.error && (
-              <p className="mt-2 text-sm text-red-600">
-                Failed to create state: {refreshPortfolioState.error.message}
-              </p>
-            )}
           </div>
         </div>
       </div>

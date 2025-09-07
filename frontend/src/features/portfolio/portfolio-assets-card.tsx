@@ -4,7 +4,6 @@ import { Button } from '@shared/ui/Button';
 import { formatNumberEnUS } from '@shared/lib/utils';
 import {
   usePortfolioDataWithErrors,
-  useRefreshPortfolioState,
   type PortfolioAsset,
 } from '@entities/portfolio';
 import { PortfolioErrorDisplay } from './portfolio-error-display';
@@ -91,7 +90,6 @@ export const PortfolioAssetsCard: React.FC<PortfolioAssetsCardProps> = ({
 
   const { data: balancesData, isLoading, isError } = useBalances();
   const [showAll, setShowAll] = React.useState(false);
-  const refreshPortfolioState = useRefreshPortfolioState();
 
   if (isLoading) {
     return (
@@ -169,8 +167,6 @@ export const PortfolioAssetsCard: React.FC<PortfolioAssetsCardProps> = ({
     return (
       <PortfolioErrorDisplay
         errorDetails={portfolioQuery.errorDetails}
-        onRefresh={() => refreshPortfolioState.mutate({})}
-        isRefreshLoading={refreshPortfolioState.isPending}
         className={className}
       />
     );
@@ -220,27 +216,10 @@ export const PortfolioAssetsCard: React.FC<PortfolioAssetsCardProps> = ({
             >
               Portfolio State Not Found
             </h4>
-            <p
-              className="text-sm mb-4"
-              style={{ color: 'rgb(var(--fg-muted))' }}
-            >
-              Create your first portfolio state to see balance data and
-              analytics.
+            <p className="text-sm" style={{ color: 'rgb(var(--fg-muted))' }}>
+              Portfolio state not available. Complete setup in Dashboard to see
+              balance data and analytics.
             </p>
-            <Button
-              onClick={() => refreshPortfolioState.mutate({})}
-              disabled={refreshPortfolioState.isPending}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md"
-            >
-              {refreshPortfolioState.isPending
-                ? 'Creating...'
-                : '🔄 Create Portfolio State'}
-            </Button>
-            {refreshPortfolioState.error && (
-              <p className="mt-2 text-sm text-red-600">
-                Failed to create state: {refreshPortfolioState.error.message}
-              </p>
-            )}
           </div>
         </div>
       </div>

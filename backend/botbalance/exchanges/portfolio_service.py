@@ -369,7 +369,7 @@ class PortfolioService:
                 return None  # Will result in NO_ACTIVE_STRATEGY error
 
             # 2. Get strategy universe (allocation symbols)
-            allocations = strategy.get_target_allocations()
+            allocations = await sync_to_async(strategy.get_target_allocations)()
             if not allocations:
                 logger.warning(f"Strategy {strategy.name} has no allocations defined")
                 return None
@@ -388,36 +388,37 @@ class PortfolioService:
                 logger.warning(f"No balances found for account {exchange_account.name}")
                 return None
 
-            # 4. Filter balances to only universe symbols
-            # Extract base asset from universe symbols (e.g., BTC from BTCUSDT)
-            base_assets = set()
-            for symbol in universe_symbols:
-                if symbol.endswith(strategy.quote_asset):
-                    base_asset = symbol[: -len(strategy.quote_asset)]
-                    base_assets.add(base_asset)
-                else:
-                    # This should not happen due to validation, but handle gracefully
-                    logger.error(
-                        f"Invalid symbol {symbol} in strategy - doesn't end with {strategy.quote_asset}"
-                    )
+            # 4. Process ALL universe symbols (not just those with balance > 0)
+            # universe_symbols contains individual assets (BTC, USDT), not trading pairs
+            strategy_assets = set(universe_symbols) - {
+                strategy.quote_asset
+            }  # Remove quote asset
 
-            # Filter balances to only base assets from strategy
-            strategy_balances = {
-                asset: balance
-                for asset, balance in all_balances.items()
-                if asset in base_assets and balance > self.MIN_BALANCE_THRESHOLD
+            # Get balances for all strategy assets (including zero balances)
+            strategy_balances = {}
+            for asset in strategy_assets:
+                balance = all_balances.get(asset, Decimal("0"))
+                strategy_balances[asset] = balance
+
+            # Log only non-zero balances for clarity
+            non_zero_balances = {
+                k: v
+                for k, v in strategy_balances.items()
+                if v > self.MIN_BALANCE_THRESHOLD
             }
+            logger.info(f"Strategy balances found: {list(non_zero_balances.keys())}")
 
-            logger.info(f"Strategy balances found: {list(strategy_balances.keys())}")
-
-            # 5. Get prices for universe symbols (trading pairs)
+            # 5. Get prices only for assets with non-zero balances
             # Build price lookup map: symbol -> pair
             price_pairs = []
             asset_to_pair = {}
-            for asset in strategy_balances.keys():
-                pair = f"{asset}{strategy.quote_asset}"
-                price_pairs.append(pair)
-                asset_to_pair[asset] = pair
+            for asset, balance in strategy_balances.items():
+                if (
+                    balance > self.MIN_BALANCE_THRESHOLD
+                ):  # Only get prices for non-zero balances
+                    pair = f"{asset}{strategy.quote_asset}"
+                    price_pairs.append(pair)
+                    asset_to_pair[asset] = pair
 
             # Batch price fetch using adapter (new architecture)
             prices_raw = await self.price_service.get_prices_batch_with_adapter(
@@ -426,46 +427,55 @@ class PortfolioService:
             if not prices_raw:
                 prices_raw = {}
 
-            # 6. STRICT price validation - ALL prices must be available
+            # 6. STRICT price validation - prices must be available for non-zero balances only
             missing_prices = []
-            prices = {}
-            for _asset, pair in asset_to_pair.items():
+            prices = {}  # Will store: {asset: price} format, not {pair: price}
+            for asset, pair in asset_to_pair.items():
                 price = prices_raw.get(pair)
                 if price is None or price <= 0:
                     missing_prices.append(pair)
                 else:
-                    prices[pair] = price
+                    prices[asset] = price  # Store by asset symbol, not trading pair
 
             if missing_prices:
-                logger.error(f"Missing prices for: {missing_prices}")
+                logger.error(
+                    f"Missing prices for assets with non-zero balances: {missing_prices}"
+                )
                 return None  # Will result in ERROR_PRICING
 
-            # 7. Calculate positions and NAV
+            # 7. Calculate positions and NAV - include ALL assets from universe_symbols
             positions = {}
             nav_quote = Decimal("0")
 
             for asset, balance in strategy_balances.items():
-                pair = asset_to_pair[asset]
-                price = prices[pair]
+                if balance > self.MIN_BALANCE_THRESHOLD:
+                    # Asset has balance - get price and calculate value
+                    price = prices[asset]  # Use asset symbol as key, not trading pair
+                    quote_value = self._round_decimal(balance * price, 2)
+                    nav_quote += quote_value
+                else:
+                    # Asset has zero balance - include in positions but no value
+                    quote_value = Decimal("0")
 
-                quote_value = self._round_decimal(balance * price, 2)
-                positions[pair] = {
+                # Use asset symbol as key, not trading pair
+                positions[asset] = {
                     "amount": str(balance),
                     "quote_value": str(quote_value),
                 }
-                nav_quote += quote_value
 
-            # 8. Add quote asset itself if it exists in balances
+            # 8. Add quote asset itself - always include in positions
             quote_balance = all_balances.get(strategy.quote_asset, Decimal("0"))
+            quote_symbol = strategy.quote_asset  # e.g., USDT
+
+            # Always add quote asset to positions and prices
+            positions[quote_symbol] = {
+                "amount": str(quote_balance),
+                "quote_value": str(quote_balance),  # 1:1 rate for quote asset
+            }
+            prices[quote_symbol] = Decimal("1.0")
+
+            # Add to NAV only if balance > threshold
             if quote_balance > self.MIN_BALANCE_THRESHOLD:
-                quote_pair = (
-                    f"{strategy.quote_asset}{strategy.quote_asset}"  # e.g., USDTUSDT
-                )
-                positions[quote_pair] = {
-                    "amount": str(quote_balance),
-                    "quote_value": str(quote_balance),  # 1:1 rate for quote asset
-                }
-                prices[quote_pair] = Decimal("1.0")
                 nav_quote += quote_balance
 
             nav_quote = self._round_decimal(nav_quote, 8)
@@ -504,6 +514,9 @@ class PortfolioService:
         """
         import time
 
+        # Import at function start to avoid scope issues
+        from asgiref.sync import sync_to_async
+
         logger.info(f"Upserting portfolio state for account: {exchange_account.name}")
         start_time = time.time()
 
@@ -523,8 +536,6 @@ class PortfolioService:
             state_data = await self.calculate_state_for_strategy(exchange_account)
             if state_data is None:
                 # Check specific reason for failure
-                from asgiref.sync import sync_to_async
-
                 from strategies.models import Strategy
 
                 strategy_exists = await sync_to_async(
@@ -548,7 +559,9 @@ class PortfolioService:
             cache.set(cooldown_key, True, cooldown_seconds)
 
             # 4. Atomically upsert PortfolioState
-            state, created = PortfolioState.objects.update_or_create(
+            state, created = await sync_to_async(
+                PortfolioState.objects.update_or_create
+            )(
                 exchange_account=exchange_account,
                 defaults={
                     "ts": timezone.now(),

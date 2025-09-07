@@ -230,8 +230,11 @@ export const RebalancePlan: React.FC<RebalancePlanProps> = ({ className }) => {
 
   if (error || !response || response.status !== 'success' || !response.plan) {
     const isNoStrategy = error && 'status' in error && error.status === 404;
-    const isInvalidStrategy =
-      error && 'status' in error && error.status === 400;
+    const errorCode =
+      error && 'error_code' in error ? error.error_code : undefined;
+    const isStrategyNotActive = errorCode === 'STRATEGY_NOT_ACTIVE';
+    const isInvalidStrategy = errorCode === 'INVALID_STRATEGY';
+    const is400Error = error && 'status' in error && error.status === 400;
 
     return (
       <div className={`card-github ${className}`}>
@@ -250,7 +253,13 @@ export const RebalancePlan: React.FC<RebalancePlanProps> = ({ className }) => {
           <div className="text-center py-8">
             <div className="mb-4">
               <span className="text-4xl">
-                {isNoStrategy ? '📋' : isInvalidStrategy ? '⚠️' : '💥'}
+                {isNoStrategy
+                  ? '📋'
+                  : isStrategyNotActive
+                    ? '⏸️'
+                    : isInvalidStrategy || is400Error
+                      ? '⚠️'
+                      : '💥'}
               </span>
             </div>
             <p
@@ -259,9 +268,13 @@ export const RebalancePlan: React.FC<RebalancePlanProps> = ({ className }) => {
             >
               {isNoStrategy
                 ? 'No Strategy Found'
-                : isInvalidStrategy
-                  ? 'Invalid Strategy'
-                  : 'Calculation Failed'}
+                : isStrategyNotActive
+                  ? 'Strategy Not Active'
+                  : isInvalidStrategy
+                    ? 'Invalid Strategy'
+                    : is400Error
+                      ? 'Strategy Issue'
+                      : 'Calculation Failed'}
             </p>
             <p
               className="text-sm mb-4"
@@ -269,9 +282,13 @@ export const RebalancePlan: React.FC<RebalancePlanProps> = ({ className }) => {
             >
               {isNoStrategy
                 ? 'Create a trading strategy first to see rebalance recommendations'
-                : isInvalidStrategy
-                  ? 'Your strategy allocations must sum to 100% to calculate a rebalance plan'
-                  : 'Unable to calculate rebalance plan. Please try again.'}
+                : isStrategyNotActive
+                  ? 'Strategy is not active. Please activate your strategy first.'
+                  : isInvalidStrategy
+                    ? 'Your strategy allocations must sum to 100% to calculate a rebalance plan'
+                    : is400Error
+                      ? 'Please check your strategy configuration and try again'
+                      : 'Unable to calculate rebalance plan. Please try again.'}
             </p>
             <Button
               onClick={() => refetch()}

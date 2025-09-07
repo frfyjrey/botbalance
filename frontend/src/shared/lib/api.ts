@@ -59,16 +59,19 @@ export const tokenManager = {
 export class ApiClientError extends Error {
   status: number;
   errors?: Record<string, string[]>;
+  error_code?: string;
 
   constructor(
     message: string,
     status: number,
     errors?: Record<string, string[]>,
+    error_code?: string,
   ) {
     super(message);
     this.name = 'ApiClientError';
     this.status = status;
     this.errors = errors;
+    this.error_code = error_code;
   }
 }
 
@@ -114,7 +117,12 @@ async function apiRequest<T = unknown>(
 
     if (!response.ok) {
       const message = data.message || data.detail || `HTTP ${response.status}`;
-      throw new ApiClientError(message, response.status, data.errors);
+      throw new ApiClientError(
+        message,
+        response.status,
+        data.errors,
+        data.error_code,
+      );
     }
 
     return data;

@@ -376,6 +376,17 @@ def rebalance_plan_view(request):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        # Check if strategy is active
+        if not strategy.is_active:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Strategy is not active. Please activate your strategy first.",
+                    "error_code": "STRATEGY_NOT_ACTIVE",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         # Check if strategy has valid allocations
         if not strategy.is_allocation_valid():
             return Response(
@@ -387,19 +398,27 @@ def rebalance_plan_view(request):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Get user's exchange account
-        exchange_account = ExchangeAccount.objects.filter(
-            user=request.user, is_active=True
-        ).first()
+        # Get strategy's exchange account
+        exchange_account = strategy.exchange_account
 
         if not exchange_account:
             return Response(
                 {
                     "status": "error",
-                    "message": "No active exchange account found. Please add an exchange account first.",
+                    "message": "Strategy has no exchange account assigned",
                     "error_code": "NO_EXCHANGE_ACCOUNT",
                 },
-                status=status.HTTP_404_NOT_FOUND,
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not exchange_account.is_active:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Strategy's exchange account is inactive",
+                    "error_code": "INACTIVE_EXCHANGE_ACCOUNT",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Calculate rebalance plan
@@ -471,28 +490,32 @@ def rebalance_plan_view(request):
         plan_data = {
             "strategy_id": plan.strategy_id,
             "strategy_name": plan.strategy_name,
-            "portfolio_nav": plan.portfolio_nav,
+            "portfolio_nav": round(plan.portfolio_nav, 2),
             "quote_currency": plan.quote_currency,
             "actions": [
                 {
                     "asset": action.asset,
                     "action": action.action,
-                    "current_percentage": action.current_percentage,
-                    "target_percentage": action.target_percentage,
-                    "current_value": action.current_value,
-                    "target_value": action.target_value,
-                    "delta_value": action.delta_value,
-                    "order_amount": action.order_amount,
-                    "order_volume": action.order_volume,
-                    "order_price": action.order_price,
-                    "market_price": action.market_price,
-                    "normalized_order_volume": action.normalized_order_volume,
-                    "normalized_order_price": action.normalized_order_price,
-                    "order_amount_normalized": action.order_amount_normalized,
+                    "current_percentage": round(action.current_percentage, 2),
+                    "target_percentage": round(action.target_percentage, 2),
+                    "current_value": round(action.current_value, 2),
+                    "target_value": round(action.target_value, 2),
+                    "delta_value": round(action.delta_value, 2),
+                    "order_amount": round(action.order_amount, 2)
+                    if action.order_amount is not None
+                    else None,
+                    "order_volume": action.order_volume,  # 8 decimal places - ok
+                    "order_price": action.order_price,  # 8 decimal places - ok
+                    "market_price": action.market_price,  # 8 decimal places - ok
+                    "normalized_order_volume": action.normalized_order_volume,  # 8 decimal places - ok
+                    "normalized_order_price": action.normalized_order_price,  # 8 decimal places - ok
+                    "order_amount_normalized": round(action.order_amount_normalized, 2)
+                    if action.order_amount_normalized is not None
+                    else None,
                 }
                 for action in plan.actions
             ],
-            "total_delta": plan.total_delta,
+            "total_delta": round(plan.total_delta, 2),
             "orders_needed": plan.orders_needed,
             "rebalance_needed": plan.rebalance_needed,
             "calculated_at": plan.calculated_at,

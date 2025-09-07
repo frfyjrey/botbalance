@@ -200,7 +200,7 @@ class StrategySerializer(serializers.ModelSerializer):
         instance.save()
 
         # If allocations data is provided, replace all existing allocations
-        if allocations_data is not None:  # Check explicitly for None vs empty list
+        if allocations_data:  # Only if allocations are actually provided and non-empty
             # Delete existing allocations
             instance.allocations.all().delete()
 
