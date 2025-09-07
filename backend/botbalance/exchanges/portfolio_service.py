@@ -534,10 +534,10 @@ class PortfolioService:
                 )()
 
                 if not strategy_exists:
-                    exchange_account.update_health_error("NO_ACTIVE_STRATEGY")
+                    await sync_to_async(exchange_account.update_health_error)("NO_ACTIVE_STRATEGY")
                     return None, "NO_ACTIVE_STRATEGY"
                 else:
-                    exchange_account.update_health_error("ERROR_PRICING")
+                    await sync_to_async(exchange_account.update_health_error)("ERROR_PRICING")
                     return None, "ERROR_PRICING"
 
             # 3. Set cooldown (configurable seconds)
@@ -562,7 +562,7 @@ class PortfolioService:
 
             # 5. Update health status for successful operation
             latency_ms = int((time.time() - start_time) * 1000)
-            exchange_account.update_health_success(latency_ms)
+            await sync_to_async(exchange_account.update_health_success)(latency_ms)
 
             logger.info(
                 f"PortfolioState {action} for account {exchange_account.name}: "
@@ -573,7 +573,7 @@ class PortfolioService:
 
         except Exception as e:
             logger.error(f"Failed to upsert portfolio state: {e}", exc_info=True)
-            exchange_account.update_health_error("ERROR_PRICING")
+            await sync_to_async(exchange_account.update_health_error)("ERROR_PRICING")
             return None, "ERROR_PRICING"  # Generic error
 
 
