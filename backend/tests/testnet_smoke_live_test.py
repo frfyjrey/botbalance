@@ -84,7 +84,7 @@ def test_comprehensive_smoke_create_and_cancel_order():
         create_strategy_payload = {
             "name": "Smoke Test Strategy",
             "order_size_pct": "1.0",  # Small size for testing
-            "min_delta_quote": "1.0",
+            "min_delta_pct": "0.1",
             "order_step_pct": "0.5",
             "switch_cancel_buffer_pct": "0.1",
             "allocations": [

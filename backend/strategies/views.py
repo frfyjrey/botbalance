@@ -6,6 +6,7 @@ import asyncio
 import logging
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -14,6 +15,7 @@ from rest_framework.response import Response
 
 from botbalance.exchanges.models import ExchangeAccount
 
+from .constants import ALL_ALLOCATION_ASSETS, QUOTE_ASSET_SYMBOLS
 from .models import Order, RebalanceExecution, Strategy
 from .rebalance_service import (
     NoActiveStrategyError,
@@ -54,7 +56,7 @@ def prepare_exchange_data_for_json(exchange_order_dict: dict) -> dict:
     return result
 
 
-@api_view(["GET", "POST"])
+@api_view(["GET", "POST", "PATCH", "DELETE"])
 @permission_classes([IsAuthenticated])
 def user_strategy_view(request):
     """Manage user's trading strategy."""
@@ -63,6 +65,10 @@ def user_strategy_view(request):
             return _get_user_strategy(request)
         elif request.method == "POST":
             return _create_or_update_strategy(request)
+        elif request.method == "PATCH":
+            return _patch_strategy(request)
+        elif request.method == "DELETE":
+            return _delete_strategy(request)
     except Exception as e:
         logger.error(f"Error in user_strategy_view: {e}", exc_info=True)
         return Response(
@@ -132,16 +138,38 @@ def _create_or_update_strategy(request):
         )
 
         if strategy_serializer.is_valid():
-            strategy = strategy_serializer.save()
-            return Response(
-                {
-                    "status": "success",
-                    "message": "Strategy updated successfully",
-                    "strategy": StrategySerializer(
-                        strategy, context={"request": request}
-                    ).data,
-                }
-            )
+            try:
+                strategy = strategy_serializer.save()
+                # Validate model constraints (including base currency in allocations)
+                strategy.full_clean()
+                return Response(
+                    {
+                        "status": "success",
+                        "message": "Strategy updated successfully",
+                        "strategy": StrategySerializer(
+                            strategy, context={"request": request}
+                        ).data,
+                    }
+                )
+            except ValidationError as e:
+                error_message = "Validation failed"
+                errors = {}
+
+                if hasattr(e, "message_dict"):
+                    errors = e.message_dict
+                elif hasattr(e, "messages"):
+                    error_message = "; ".join(e.messages)
+                else:
+                    error_message = str(e)
+
+                return Response(
+                    {
+                        "status": "error",
+                        "message": error_message,
+                        "errors": errors,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
         else:
             return Response(
                 {
@@ -170,17 +198,43 @@ def _create_or_update_strategy(request):
         )
 
         if strategy_serializer.is_valid():
-            strategy = strategy_serializer.save()
-            return Response(
-                {
-                    "status": "success",
-                    "message": "Strategy created successfully",
-                    "strategy": StrategySerializer(
-                        strategy, context={"request": request}
-                    ).data,
-                },
-                status=status.HTTP_201_CREATED,
-            )
+            try:
+                strategy = strategy_serializer.save()
+                # Validate model constraints (including base currency in allocations)
+                strategy.full_clean()
+                return Response(
+                    {
+                        "status": "success",
+                        "message": "Strategy created successfully",
+                        "strategy": StrategySerializer(
+                            strategy, context={"request": request}
+                        ).data,
+                    },
+                    status=status.HTTP_201_CREATED,
+                )
+            except ValidationError as e:
+                # Delete the strategy if validation fails
+                if strategy and strategy.pk:
+                    strategy.delete()
+
+                error_message = "Validation failed"
+                errors = {}
+
+                if hasattr(e, "message_dict"):
+                    errors = e.message_dict
+                elif hasattr(e, "messages"):
+                    error_message = "; ".join(e.messages)
+                else:
+                    error_message = str(e)
+
+                return Response(
+                    {
+                        "status": "error",
+                        "message": error_message,
+                        "errors": errors,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
         else:
             return Response(
                 {
@@ -190,6 +244,112 @@ def _create_or_update_strategy(request):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+
+def _patch_strategy(request):
+    """Partially update user's existing strategy (e.g., toggle is_active)."""
+    # Get user's existing strategy
+    try:
+        strategy = Strategy.objects.get(user=request.user)
+    except Strategy.DoesNotExist:
+        return Response(
+            {
+                "status": "error",
+                "message": "No strategy found. Create a strategy first.",
+                "error_code": "STRATEGY_NOT_FOUND",
+            },
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    # Update strategy with partial data
+    serializer = StrategyUpdateRequestSerializer(data=request.data, partial=True)
+    if not serializer.is_valid():
+        return Response(
+            {
+                "status": "error",
+                "message": "Invalid strategy data",
+                "errors": serializer.errors,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Use StrategySerializer to update the strategy
+    strategy_serializer = StrategySerializer(
+        strategy,
+        data=serializer.validated_data,
+        partial=True,
+        context={"request": request},
+    )
+
+    if strategy_serializer.is_valid():
+        try:
+            strategy = strategy_serializer.save()
+            # Validate model constraints (including base currency in allocations)
+            strategy.full_clean()
+            return Response(
+                {
+                    "status": "success",
+                    "message": "Strategy updated successfully",
+                    "strategy": StrategySerializer(
+                        strategy, context={"request": request}
+                    ).data,
+                },
+                status=status.HTTP_200_OK,
+            )
+        except ValidationError as e:
+            error_message = "Validation failed"
+            errors = {}
+
+            if hasattr(e, "message_dict"):
+                errors = e.message_dict
+            elif hasattr(e, "messages"):
+                error_message = "; ".join(e.messages)
+            else:
+                error_message = str(e)
+
+            return Response(
+                {
+                    "status": "error",
+                    "message": error_message,
+                    "errors": errors,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+    else:
+        return Response(
+            {
+                "status": "error",
+                "message": "Failed to update strategy",
+                "errors": strategy_serializer.errors,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+
+def _delete_strategy(request):
+    """Delete user's strategy and all related data."""
+    try:
+        strategy = Strategy.objects.get(user=request.user)
+    except Strategy.DoesNotExist:
+        return Response(
+            {
+                "status": "error",
+                "message": "No strategy found.",
+                "error_code": "STRATEGY_NOT_FOUND",
+            },
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    strategy_name = strategy.name
+    strategy.delete()
+
+    return Response(
+        {
+            "status": "success",
+            "message": f"Strategy '{strategy_name}' deleted successfully",
+        },
+        status=status.HTTP_200_OK,
+    )
 
 
 @api_view(["GET"])
@@ -248,13 +408,15 @@ def rebalance_plan_view(request):
         )
 
         try:
-            logger.info(f"Calling calculate_rebalance_plan for strategy: {strategy.name}")
+            logger.info(
+                f"Calling calculate_rebalance_plan for strategy: {strategy.name}"
+            )
             plan = asyncio.run(
                 rebalance_service.calculate_rebalance_plan(
                     strategy, exchange_account, force_refresh
                 )
             )
-            logger.info(f"Successfully calculated rebalance plan")
+            logger.info("Successfully calculated rebalance plan")
         except NoPricingDataError as e:
             logger.warning(f"Caught NoPricingDataError: {e}")
             return Response(
@@ -511,7 +673,9 @@ def rebalance_execute_view(request):
                 status=status.HTTP_422_UNPROCESSABLE_ENTITY,
             )
         except NoActiveStrategyError as e:
-            logger.warning(f"Caught NoActiveStrategyError in execute: {e} - returning HTTP 409")
+            logger.warning(
+                f"Caught NoActiveStrategyError in execute: {e} - returning HTTP 409"
+            )
             return Response(
                 {
                     "status": "error",
@@ -591,9 +755,11 @@ def rebalance_execute_view(request):
                         f"Skipping order for quote asset {action.asset} (no self-quote trades)"
                     )
                     continue
-                if abs(action.delta_value) < strategy.min_delta_quote:
+                # Calculate minimum delta threshold for this action based on percentage
+                min_delta_threshold = action.target_value * strategy.min_delta_pct / 100
+                if abs(action.delta_value) < min_delta_threshold:
                     logger.info(
-                        f"Skipping {action.asset} delta {action.delta_value} below minimum {strategy.min_delta_quote}"
+                        f"Skipping {action.asset} delta {action.delta_value} below minimum threshold {min_delta_threshold} ({strategy.min_delta_pct}%)"
                     )
                     continue
 
@@ -778,6 +944,38 @@ def rebalance_execute_view(request):
                 "status": "error",
                 "message": "Internal server error occurred during rebalance execution",
                 "error_code": "REBALANCE_ERROR",
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def strategy_constants_view(request):
+    """
+    Get supported assets and currencies for strategy configuration.
+
+    This endpoint provides the frontend with the list of supported
+    quote assets (base currencies) and allocation assets.
+    """
+    try:
+        return Response(
+            {
+                "status": "success",
+                "constants": {
+                    "quote_assets": QUOTE_ASSET_SYMBOLS,
+                    "allocation_assets": ALL_ALLOCATION_ASSETS,
+                },
+            },
+            status=status.HTTP_200_OK,
+        )
+    except Exception as e:
+        logger.error(f"Error in strategy_constants_view: {e}", exc_info=True)
+        return Response(
+            {
+                "status": "error",
+                "message": "Failed to retrieve strategy constants",
+                "error_code": "CONSTANTS_ERROR",
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )

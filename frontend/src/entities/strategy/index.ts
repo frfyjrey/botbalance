@@ -3,6 +3,8 @@ export type {
   Strategy,
   StrategyAllocation,
   StrategyResponse,
+  StrategyDeleteResponse,
+  StrategyConstantsResponse,
   StrategyCreateRequest,
   StrategyUpdateRequest,
   StrategyActivateRequest,
@@ -21,18 +23,16 @@ export type {
 } from './model';
 
 // Export constants
-export {
-  DEFAULT_STRATEGY_VALUES,
-  SUPPORTED_ASSETS,
-  ACTION_COLORS,
-  ACTION_LABELS,
-} from './model';
+export { DEFAULT_STRATEGY_VALUES, ACTION_COLORS, ACTION_LABELS } from './model';
 
 // Export API hooks
 export {
   useStrategy,
   useCreateStrategy,
   useUpdateStrategy,
+  usePatchStrategy,
+  useDeleteStrategy,
+  useStrategyConstants,
   useActivateStrategy,
   useRebalancePlan,
   useRefreshRebalancePlan,

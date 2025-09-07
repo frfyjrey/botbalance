@@ -1,8 +1,10 @@
 /**
- * Exchange account API functions.
+ * Exchange account API functions and React hooks.
  */
 
+import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@shared/lib/api';
+import { QUERY_KEYS } from '@shared/config/constants';
 import type {
   ExchangeAccount,
   ExchangeAccountCreateRequest,
@@ -48,4 +50,22 @@ export const exchangeApi = {
   async check(id: number): Promise<HealthCheckResponse> {
     return await apiClient.checkExchangeAccount(id);
   },
+};
+
+/**
+ * Hook to fetch user's exchange accounts
+ */
+export const useExchangeAccounts = () => {
+  return useQuery({
+    queryKey: [QUERY_KEYS.EXCHANGE_ACCOUNTS],
+    queryFn: () => exchangeApi.getAll(),
+    staleTime: 1000 * 60 * 5, // Consider data fresh for 5 minutes
+    retry: (failureCount, error) => {
+      // Don't retry on 401 (auth)
+      if (error && 'status' in error && error.status === 401) {
+        return false;
+      }
+      return failureCount < 3;
+    },
+  });
 };

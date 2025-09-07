@@ -18,7 +18,12 @@ export interface PortfolioError {
 
 export interface ErrorHandlingResult {
   isError: boolean;
-  errorType?: 'NO_STATE' | 'NO_ACTIVE_STRATEGY' | 'ERROR_PRICING' | 'TOO_MANY_REQUESTS' | 'UNKNOWN';
+  errorType?:
+    | 'NO_STATE'
+    | 'NO_ACTIVE_STRATEGY'
+    | 'ERROR_PRICING'
+    | 'TOO_MANY_REQUESTS'
+    | 'UNKNOWN';
   errorMessage?: string;
   missingPrices?: string[];
   showRefreshButton?: boolean;
@@ -35,9 +40,12 @@ export const parsePortfolioError = (error: unknown): ErrorHandlingResult => {
   const portfolioError = error as PortfolioError;
 
   // Check for HTTP status codes
-  const status = portfolioError.status || portfolioError.response?.status;
+  const status =
+    (portfolioError as unknown as { status?: number }).status ||
+    (portfolioError.response as { status?: number })?.status;
   const errorCode = portfolioError.response?.data?.error_code;
-  const message = portfolioError.response?.data?.message || portfolioError.message;
+  const message =
+    portfolioError.response?.data?.message || portfolioError.message;
 
   // 404 NO_STATE - no portfolio state exists
   if (status === 404 || errorCode === 'ERROR_NO_STATE') {
@@ -48,7 +56,7 @@ export const parsePortfolioError = (error: unknown): ErrorHandlingResult => {
     };
   }
 
-  // 409 NO_ACTIVE_STRATEGY - no active strategy for connector  
+  // 409 NO_ACTIVE_STRATEGY - no active strategy for connector
   if (status === 409 || errorCode === 'NO_ACTIVE_STRATEGY') {
     return {
       isError: true,
@@ -59,7 +67,8 @@ export const parsePortfolioError = (error: unknown): ErrorHandlingResult => {
 
   // 422 ERROR_PRICING - unable to get prices
   if (status === 422 || errorCode === 'ERROR_PRICING') {
-    const missingPrices = portfolioError.response?.data?.errors?.missing_prices || [];
+    const missingPrices =
+      portfolioError.response?.data?.errors?.missing_prices || [];
     return {
       isError: true,
       errorType: 'ERROR_PRICING',
@@ -94,12 +103,12 @@ export const formatTimeAgo = (timestamp: string): string => {
     // Ensure timestamp has Z for UTC
     const ts = timestamp.endsWith('Z') ? timestamp : `${timestamp}Z`;
     const date = new Date(ts);
-    
+
     // Check if date is invalid
     if (isNaN(date.getTime())) {
       return 'unknown';
     }
-    
+
     const diff = Date.now() - date.getTime();
     const seconds = Math.floor(diff / 1000);
 
@@ -127,16 +136,19 @@ export const formatTimeAgo = (timestamp: string): string => {
 /**
  * Check if data is stale (older than 5 minutes)
  */
-export const isDataStale = (timestamp: string, staleThresholdMinutes = 5): boolean => {
+export const isDataStale = (
+  timestamp: string,
+  staleThresholdMinutes = 5,
+): boolean => {
   try {
     const ts = timestamp.endsWith('Z') ? timestamp : `${timestamp}Z`;
     const date = new Date(ts);
-    
+
     // Check if date is invalid
     if (isNaN(date.getTime())) {
       return true; // Consider invalid timestamps as stale
     }
-    
+
     const diff = Date.now() - date.getTime();
     const minutes = diff / (1000 * 60);
     return minutes > staleThresholdMinutes;

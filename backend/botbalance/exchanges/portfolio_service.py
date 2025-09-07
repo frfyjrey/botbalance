@@ -534,10 +534,14 @@ class PortfolioService:
                 )()
 
                 if not strategy_exists:
-                    await sync_to_async(exchange_account.update_health_error)("NO_ACTIVE_STRATEGY")
+                    await sync_to_async(exchange_account.update_health_error)(
+                        "NO_ACTIVE_STRATEGY"
+                    )
                     return None, "NO_ACTIVE_STRATEGY"
                 else:
-                    await sync_to_async(exchange_account.update_health_error)("ERROR_PRICING")
+                    await sync_to_async(exchange_account.update_health_error)(
+                        "ERROR_PRICING"
+                    )
                     return None, "ERROR_PRICING"
 
             # 3. Set cooldown (configurable seconds)

@@ -331,6 +331,37 @@ export const apiClient = {
     );
   },
 
+  async patchStrategy(
+    data: import('@entities/strategy').StrategyUpdateRequest,
+  ): Promise<import('@entities/strategy').StrategyResponse> {
+    return apiRequest<import('@entities/strategy').StrategyResponse>(
+      '/api/me/strategy/',
+      {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      },
+    );
+  },
+
+  async deleteStrategy(): Promise<
+    import('@entities/strategy').StrategyDeleteResponse
+  > {
+    return apiRequest<import('@entities/strategy').StrategyDeleteResponse>(
+      '/api/me/strategy/',
+      {
+        method: 'DELETE',
+      },
+    );
+  },
+
+  async getStrategyConstants(): Promise<
+    import('@entities/strategy').StrategyConstantsResponse
+  > {
+    return apiRequest<import('@entities/strategy').StrategyConstantsResponse>(
+      '/api/me/strategy/constants/',
+    );
+  },
+
   async activateStrategy(
     data: import('@entities/strategy').StrategyActivateRequest,
   ): Promise<import('@entities/strategy').StrategyResponse> {

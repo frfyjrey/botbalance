@@ -244,7 +244,7 @@ class RebalanceService:
                 current_values,
                 target_allocations,
                 portfolio_summary.total_nav,
-                strategy.min_delta_quote,
+                strategy.min_delta_pct,
                 strategy.order_size_pct,
                 asset_prices,
                 strategy.order_step_pct,
@@ -259,7 +259,11 @@ class RebalanceService:
             orders_needed = sum(
                 1 for action in actions if action.action in ("buy", "sell")
             )
-            rebalance_needed = total_delta >= strategy.min_delta_quote
+            # Check if total delta exceeds minimum percentage threshold based on portfolio NAV
+            min_delta_threshold_total = (
+                portfolio_summary.total_nav * strategy.min_delta_pct / 100
+            )
+            rebalance_needed = total_delta >= min_delta_threshold_total
 
             plan = RebalancePlan(
                 strategy_id=strategy.id,
@@ -292,7 +296,7 @@ class RebalanceService:
         current_values: dict[str, Decimal],
         target_allocations: dict[str, Decimal],
         portfolio_nav: Decimal,
-        min_delta_quote: Decimal,
+        min_delta_pct: Decimal,
         order_size_pct: Decimal,
         asset_prices: dict[str, Decimal],
         order_step_pct: Decimal,
@@ -307,7 +311,7 @@ class RebalanceService:
             current_values: Current asset values in quote currency
             target_allocations: Target asset percentages
             portfolio_nav: Total portfolio value
-            min_delta_quote: Minimum delta to trigger rebalancing
+            min_delta_pct: Minimum delta percentage to trigger rebalancing
 
         Returns:
             List of RebalanceAction objects
@@ -339,7 +343,7 @@ class RebalanceService:
             # Determine action
             action, order_amount = self._determine_action(
                 delta_value,
-                min_delta_quote,
+                min_delta_pct,
                 target_value,
                 portfolio_nav,
                 order_size_pct,
@@ -415,7 +419,7 @@ class RebalanceService:
     def _determine_action(
         self,
         delta_value: Decimal,
-        min_delta_quote: Decimal,
+        min_delta_pct: Decimal,
         target_value: Decimal,
         portfolio_nav: Decimal,
         order_size_pct: Decimal,
@@ -425,7 +429,7 @@ class RebalanceService:
 
         Args:
             delta_value: Difference between target and current value
-            min_delta_quote: Minimum delta to trigger action
+            min_delta_pct: Minimum delta as percentage to trigger action
             target_value: Target value for the asset
             portfolio_nav: Total portfolio value
             order_size_pct: Maximum order size as percentage of NAV
@@ -435,8 +439,11 @@ class RebalanceService:
         """
         abs_delta = abs(delta_value)
 
+        # Calculate minimum threshold based on percentage of target value
+        min_delta_threshold = target_value * min_delta_pct / 100
+
         # Check if delta is below minimum threshold
-        if abs_delta < min_delta_quote:
+        if abs_delta < min_delta_threshold:
             return "hold", None
 
         # Calculate maximum order size based on strategy limits

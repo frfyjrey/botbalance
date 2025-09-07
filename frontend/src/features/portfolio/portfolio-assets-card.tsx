@@ -87,12 +87,14 @@ export const PortfolioAssetsCard: React.FC<PortfolioAssetsCardProps> = ({
   maxItems = 10,
 }) => {
   const { t } = useTranslation('dashboard');
-  
+
   // Use enhanced hook if feature flag enabled, fallback to original
   const enhancedQuery = usePortfolioDataWithErrors();
   const fallbackQuery = usePortfolioData();
-  const portfolioQuery = FEATURE_FLAGS.STATE_API ? enhancedQuery : fallbackQuery;
-  
+  const portfolioQuery = FEATURE_FLAGS.STATE_API
+    ? enhancedQuery
+    : fallbackQuery;
+
   const { data: balancesData, isLoading, isError } = useBalances();
   const [showAll, setShowAll] = React.useState(false);
   const refreshPortfolioState = useRefreshPortfolioState();
@@ -166,7 +168,11 @@ export const PortfolioAssetsCard: React.FC<PortfolioAssetsCardProps> = ({
   }
 
   // Enhanced error handling for PortfolioState API
-  if (FEATURE_FLAGS.STATE_API && 'errorDetails' in portfolioQuery && portfolioQuery.errorDetails?.isError) {
+  if (
+    FEATURE_FLAGS.STATE_API &&
+    'errorDetails' in portfolioQuery &&
+    portfolioQuery.errorDetails?.isError
+  ) {
     return (
       <PortfolioErrorDisplay
         errorDetails={portfolioQuery.errorDetails}
@@ -176,7 +182,7 @@ export const PortfolioAssetsCard: React.FC<PortfolioAssetsCardProps> = ({
       />
     );
   }
-  
+
   // Legacy error handling - Empty state: no PortfolioState found (ERROR_NO_STATE)
   if (!portfolioQuery.data) {
     return (
@@ -275,12 +281,20 @@ export const PortfolioAssetsCard: React.FC<PortfolioAssetsCardProps> = ({
             >
               {t('portfolio.new_portfolio', 'Новый Портфель')}
             </h3>
-            
+
             {/* Stale data and quote asset badges */}
             {FEATURE_FLAGS.STATE_API && 'isStale' in portfolioQuery && (
               <StaleDataBadge
-                isStale={(portfolioQuery as any).isStale || false}
-                timeAgo={(portfolioQuery as any).timeAgo}
+                isStale={
+                  'isStale' in portfolioQuery
+                    ? (portfolioQuery as { isStale?: boolean }).isStale || false
+                    : false
+                }
+                timeAgo={
+                  'timeAgo' in portfolioQuery
+                    ? (portfolioQuery as { timeAgo?: string }).timeAgo
+                    : undefined
+                }
                 quoteAsset={response?.portfolio?.quote_currency}
               />
             )}

@@ -122,12 +122,7 @@ class ExchangeAccount(models.Model):
 
     def __str__(self):
         testnet_suffix = " (testnet)" if self.testnet else ""
-        return "{} - {} {}{}".format(
-            self.user.username,
-            self.get_exchange_display(),
-            self.account_type,
-            testnet_suffix
-        )
+        return f"{self.user.username} - {self.get_exchange_display()} {self.account_type}{testnet_suffix}"
 
     def clean(self):
         """Validate model fields."""
@@ -335,7 +330,7 @@ class PortfolioSnapshot(models.Model):
             account_name,
             self.nav_quote,
             self.quote_asset,
-            self.ts.strftime('%Y-%m-%d %H:%M')
+            self.ts.strftime("%Y-%m-%d %H:%M"),
         )
 
     def clean(self):
@@ -502,7 +497,7 @@ class PortfolioState(models.Model):
             self.exchange_account.name,
             self.nav_quote,
             self.quote_asset,
-            self.ts.strftime('%Y-%m-%d %H:%M')
+            self.ts.strftime("%Y-%m-%d %H:%M"),
         )
 
     def clean(self):

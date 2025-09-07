@@ -14,9 +14,11 @@ export interface Strategy {
   id: number;
   name: string;
   order_size_pct: string;
-  min_delta_quote: string;
+  min_delta_pct: string;
   order_step_pct: string;
   switch_cancel_buffer_pct: string;
+  quote_asset: string;
+  exchange_account: number;
   is_active: boolean;
   allocations: StrategyAllocation[];
   total_allocation: string;
@@ -65,6 +67,20 @@ export interface StrategyResponse {
   errors?: Record<string, string[]>;
 }
 
+export interface StrategyDeleteResponse {
+  status: 'success' | 'error';
+  message: string;
+  error_code?: string;
+}
+
+export interface StrategyConstantsResponse {
+  status: 'success';
+  constants: {
+    quote_assets: string[];
+    allocation_assets: string[];
+  };
+}
+
 export interface RebalancePlanResponse {
   status: string;
   plan?: RebalancePlan;
@@ -102,18 +118,22 @@ export interface RebalanceExecuteResponse {
 export interface StrategyCreateRequest {
   name?: string;
   order_size_pct?: string;
-  min_delta_quote?: string;
+  min_delta_pct?: string;
   order_step_pct?: string;
   switch_cancel_buffer_pct?: string;
+  quote_asset?: string;
+  exchange_account?: number | null;
   allocations: Omit<StrategyAllocation, 'id' | 'created_at' | 'updated_at'>[];
 }
 
 export interface StrategyUpdateRequest {
   name?: string;
   order_size_pct?: string;
-  min_delta_quote?: string;
+  min_delta_pct?: string;
   order_step_pct?: string;
   switch_cancel_buffer_pct?: string;
+  quote_asset?: string;
+  exchange_account?: number | null;
   is_active?: boolean;
   allocations?: Omit<StrategyAllocation, 'id' | 'created_at' | 'updated_at'>[];
 }
@@ -126,9 +146,11 @@ export interface StrategyActivateRequest {
 export interface StrategyFormData {
   name: string;
   order_size_pct: number;
-  min_delta_quote: number;
+  min_delta_pct: number;
   order_step_pct: number;
   switch_cancel_buffer_pct: number;
+  quote_asset: string;
+  exchange_account: number | null;
   allocations: {
     asset: string;
     target_percentage: number;
@@ -165,20 +187,15 @@ export type StrategyStatus = 'active' | 'inactive';
 export const DEFAULT_STRATEGY_VALUES = {
   name: 'My Strategy',
   order_size_pct: 10.0,
-  min_delta_quote: 10.0,
+  min_delta_pct: 0.1,
   order_step_pct: 0.4,
   switch_cancel_buffer_pct: 0.15,
+  quote_asset: 'USDT',
+  exchange_account: null,
 } as const;
 
-export const SUPPORTED_ASSETS = [
-  'BTC',
-  'ETH',
-  'BNB',
-  'ADA',
-  'SOL',
-  'USDT',
-  'USDC',
-] as const;
+// Note: Asset constants are now loaded from the backend via useStrategyConstants()
+// This ensures the frontend and backend stay in sync and prevents security bypasses
 
 export const ACTION_COLORS = {
   buy: '#10b981', // green-500

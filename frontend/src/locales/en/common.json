@@ -32,7 +32,7 @@
   "redo": "Redo",
   "select_all": "Select All",
   "deselect_all": "Deselect All",
-  
+
   "errors": {
     "portfolio": {
       "no_state": "No portfolio data available. Click Refresh to load.",

@@ -28,9 +28,10 @@ export const PortfolioErrorDisplay: React.FC<PortfolioErrorDisplayProps> = ({
         return t('errors.portfolio.no_state');
       case 'NO_ACTIVE_STRATEGY':
         return t('errors.portfolio.no_active_strategy');
-      case 'ERROR_PRICING':
+      case 'ERROR_PRICING': {
         const assets = errorDetails.missingPrices?.join(', ') || '';
         return t('errors.portfolio.pricing_error', { assets });
+      }
       case 'TOO_MANY_REQUESTS':
         return t('errors.portfolio.rate_limit');
       default:
@@ -81,29 +82,30 @@ export const PortfolioErrorDisplay: React.FC<PortfolioErrorDisplayProps> = ({
     <div className={`card-github ${className}`}>
       <div className="p-6 text-center">
         <div className="text-4xl mb-3">{getIcon()}</div>
-        <h3 
+        <h3
           className="text-base font-medium mb-2"
           style={{ color: 'rgb(var(--fg-default))' }}
         >
           {t('error')}
         </h3>
-        <p 
+        <p
           className="text-sm mb-4 opacity-80"
           style={{ color: 'rgb(var(--fg-muted))' }}
         >
           {getErrorMessage()}
         </p>
-        
-        {errorDetails.errorType === 'ERROR_PRICING' && errorDetails.missingPrices && (
-          <div className="mb-4">
-            <div className="text-xs font-mono bg-gray-100 dark:bg-gray-800 p-2 rounded text-left">
-              {errorDetails.missingPrices.join(', ')}
+
+        {errorDetails.errorType === 'ERROR_PRICING' &&
+          errorDetails.missingPrices && (
+            <div className="mb-4">
+              <div className="text-xs font-mono bg-gray-100 dark:bg-gray-800 p-2 rounded text-left">
+                {errorDetails.missingPrices.join(', ')}
+              </div>
             </div>
-          </div>
-        )}
-        
+          )}
+
         {getActionButton()}
-        
+
         {errorDetails.errorType === 'NO_ACTIVE_STRATEGY' && (
           <p className="mt-3 text-xs opacity-60">
             Please configure your trading strategy first

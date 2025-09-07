@@ -24,31 +24,33 @@ export const StaleDataBadge: React.FC<StaleDataBadgeProps> = ({
     <div className={`flex items-center gap-2 text-xs ${className}`}>
       {/* Quote Asset Badge */}
       {quoteAsset && (
-        <span 
+        <span
           className="px-2 py-1 rounded-md font-medium"
-          style={{ 
-            backgroundColor: 'rgb(var(--canvas-subtle))', 
-            color: 'rgb(var(--fg-default))' 
+          style={{
+            backgroundColor: 'rgb(var(--canvas-subtle))',
+            color: 'rgb(var(--fg-default))',
           }}
         >
           {quoteAsset}
         </span>
       )}
-      
+
       {/* Timestamp Badge */}
-      <span 
+      <span
         className={`px-2 py-1 rounded-md font-mono ${
           isStale ? 'text-orange-600 dark:text-orange-400' : 'opacity-60'
         }`}
-        style={{ 
-          backgroundColor: isStale 
-            ? 'rgba(234, 179, 8, 0.1)' 
+        style={{
+          backgroundColor: isStale
+            ? 'rgba(234, 179, 8, 0.1)'
             : 'rgb(var(--canvas-subtle))',
-          color: isStale 
-            ? undefined 
-            : 'rgb(var(--fg-muted))'
+          color: isStale ? undefined : 'rgb(var(--fg-muted))',
         }}
-        title={isStale ? t('errors.stale_data', { time: timeAgo }) : `Updated ${timeAgo}`}
+        title={
+          isStale
+            ? t('errors.stale_data', { time: timeAgo })
+            : `Updated ${timeAgo}`
+        }
       >
         {isStale && '⚠️ '}
         {timeAgo}

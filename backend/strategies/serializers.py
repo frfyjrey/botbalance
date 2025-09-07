@@ -11,6 +11,12 @@ from typing import Any
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
+from .constants import (
+    ALL_ALLOCATION_ASSETS,
+    QUOTE_ASSET_SYMBOLS,
+    is_valid_allocation_asset,
+    is_valid_quote_asset,
+)
 from .models import RebalanceExecution, Strategy, StrategyAllocation
 
 
@@ -29,15 +35,21 @@ class StrategyAllocationSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at", "updated_at"]
 
     def validate_asset(self, value: str) -> str:
-        """Validate asset symbol format."""
+        """Validate asset symbol format and check against supported assets."""
         if not value or not isinstance(value, str):
             raise ValidationError("Asset symbol is required")
 
         # Convert to uppercase and validate format
         asset = value.strip().upper()
-        if not asset or len(asset) < 2 or not asset.isalpha():
+        if not asset or len(asset) < 2:
             raise ValidationError(
-                "Asset symbol must be at least 2 alphabetic characters (e.g., 'BTC', 'ETH')"
+                "Asset symbol must be at least 2 characters (e.g., 'BTC', 'ETH')"
+            )
+
+        # Check if asset is supported for allocations
+        if not is_valid_allocation_asset(asset):
+            raise ValidationError(
+                f"Invalid asset '{asset}'. Must be one of: {', '.join(ALL_ALLOCATION_ASSETS)}"
             )
 
         return asset
@@ -64,9 +76,11 @@ class StrategySerializer(serializers.ModelSerializer):
             "id",
             "name",
             "order_size_pct",
-            "min_delta_quote",
+            "min_delta_pct",
             "order_step_pct",
             "switch_cancel_buffer_pct",
+            "quote_asset",
+            "exchange_account",
             "is_active",
             "allocations",
             "total_allocation",
@@ -99,10 +113,12 @@ class StrategySerializer(serializers.ModelSerializer):
             raise ValidationError("Order size must be between 1.00% and 100.00%")
         return value
 
-    def validate_min_delta_quote(self, value: Decimal) -> Decimal:
-        """Validate minimum delta quote amount."""
-        if value <= 0:
-            raise ValidationError("Minimum delta must be greater than 0")
+    def validate_min_delta_pct(self, value: Decimal) -> Decimal:
+        """Validate minimum delta percentage."""
+        if value <= 0 or value > 10:
+            raise ValidationError(
+                "Minimum delta percentage must be between 0.01% and 10.00%"
+            )
         return value
 
     def validate_order_step_pct(self, value: Decimal) -> Decimal:
@@ -116,6 +132,18 @@ class StrategySerializer(serializers.ModelSerializer):
         if value < 0 or value > 1:
             raise ValidationError("Cancel buffer must be between 0.00% and 1.00%")
         return value
+
+    def validate_quote_asset(self, value: str) -> str:
+        """Validate quote asset is supported."""
+        if not value:
+            raise ValidationError("Quote asset is required")
+
+        quote_asset = value.upper()
+        if not is_valid_quote_asset(quote_asset):
+            raise ValidationError(
+                f"Invalid quote asset '{quote_asset}'. Must be one of: {', '.join(QUOTE_ASSET_SYMBOLS)}"
+            )
+        return quote_asset
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         """Validate the entire strategy data."""
@@ -275,11 +303,12 @@ class StrategyCreateRequestSerializer(serializers.Serializer):
         min_value=Decimal("1.00"),
         max_value=Decimal("100.00"),
     )
-    min_delta_quote = serializers.DecimalField(
-        max_digits=10,
+    min_delta_pct = serializers.DecimalField(
+        max_digits=5,
         decimal_places=2,
-        default=Decimal("10.00"),
+        default=Decimal("0.10"),
         min_value=Decimal("0.01"),
+        max_value=Decimal("10.00"),
     )
     order_step_pct = serializers.DecimalField(
         max_digits=5,
@@ -295,6 +324,8 @@ class StrategyCreateRequestSerializer(serializers.Serializer):
         min_value=Decimal("0.00"),
         max_value=Decimal("1.00"),
     )
+    quote_asset = serializers.CharField(max_length=10, required=True)
+    exchange_account = serializers.IntegerField(required=True)
     allocations = StrategyAllocationSerializer(many=True, required=True)
 
     def validate_allocations(self, value: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -318,6 +349,26 @@ class StrategyCreateRequestSerializer(serializers.Serializer):
 
         return value
 
+    def validate_quote_asset(self, value: str) -> str:
+        """Validate quote asset is supported."""
+        if not value:
+            raise ValidationError("Quote asset is required")
+
+        quote_asset = value.upper()
+        if not is_valid_quote_asset(quote_asset):
+            raise ValidationError(
+                f"Invalid quote asset '{quote_asset}'. Must be one of: {', '.join(QUOTE_ASSET_SYMBOLS)}"
+            )
+        return quote_asset
+
+    def validate_exchange_account(self, value: int) -> int:
+        """Validate exchange account exists and belongs to user."""
+        if not value:
+            raise ValidationError("Exchange account is required")
+
+        # Note: Additional validation for ownership will be done in the view
+        return value
+
 
 class StrategyUpdateRequestSerializer(serializers.Serializer):
     """Serializer for strategy update requests."""
@@ -330,8 +381,12 @@ class StrategyUpdateRequestSerializer(serializers.Serializer):
         max_value=Decimal("100.00"),
         required=False,
     )
-    min_delta_quote = serializers.DecimalField(
-        max_digits=10, decimal_places=2, min_value=Decimal("0.01"), required=False
+    min_delta_pct = serializers.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        min_value=Decimal("0.01"),
+        max_value=Decimal("10.00"),
+        required=False,
     )
     order_step_pct = serializers.DecimalField(
         max_digits=5,

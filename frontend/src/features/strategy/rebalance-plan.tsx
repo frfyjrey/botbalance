@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 
 import { Button } from '@shared/ui/Button';
 import {
+  useStrategy,
   useRebalancePlan,
   useRefreshRebalancePlan,
   useExecuteRebalance,
@@ -127,7 +128,18 @@ const ActionRow: React.FC<ActionRowProps> = ({ action }) => {
 };
 
 export const RebalancePlan: React.FC<RebalancePlanProps> = ({ className }) => {
-  const { data: response, isLoading, error, refetch } = useRebalancePlan();
+  const { data: strategyResponse } = useStrategy();
+  const hasStrategy = !!strategyResponse?.strategy;
+
+  const {
+    data: response,
+    isLoading,
+    error,
+    refetch,
+  } = useRebalancePlan(
+    false, // forceRefresh
+    { enabled: hasStrategy }, // Only fetch if strategy exists
+  );
   const refreshPlan = useRefreshRebalancePlan();
   const executeRebalance = useExecuteRebalance();
 
@@ -154,6 +166,38 @@ export const RebalancePlan: React.FC<RebalancePlanProps> = ({ className }) => {
       console.error('Failed to execute rebalance:', error);
     }
   };
+
+  // Show message if no strategy exists
+  if (!hasStrategy) {
+    return (
+      <div className={`card-github ${className}`}>
+        <div
+          className="p-4 border-b"
+          style={{ borderBottomColor: 'rgb(var(--border))' }}
+        >
+          <h3
+            className="text-base font-semibold"
+            style={{ color: 'rgb(var(--fg-default))' }}
+          >
+            Rebalance Plan
+          </h3>
+        </div>
+        <div className="p-6">
+          <div className="text-center py-8">
+            <p
+              className="text-sm mb-4"
+              style={{ color: 'rgb(var(--fg-muted))' }}
+            >
+              Create a trading strategy to view rebalance plans.
+            </p>
+            <p className="text-xs" style={{ color: 'rgb(var(--fg-muted))' }}>
+              Define your asset allocations and risk parameters above.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (

@@ -2,7 +2,7 @@
  * Exchange account entity exports.
  */
 
-export { exchangeApi } from './api';
+export { exchangeApi, useExchangeAccounts } from './api';
 export type {
   ExchangeAccount,
   ExchangeAccountCreateRequest,

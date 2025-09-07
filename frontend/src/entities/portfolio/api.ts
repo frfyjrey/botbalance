@@ -7,7 +7,11 @@ import type {
 
 import { apiClient } from '@shared/lib/api';
 import { QUERY_KEYS, FEATURE_FLAGS } from '@shared/config/constants';
-import { parsePortfolioError, formatTimeAgo, isDataStale } from '@shared/lib/portfolio-errors';
+import {
+  parsePortfolioError,
+  formatTimeAgo,
+  isDataStale,
+} from '@shared/lib/portfolio-errors';
 import type {
   PortfolioSummaryResponse,
   PortfolioStateResponse,
@@ -27,10 +31,10 @@ export const usePortfolioSummary = (
 ) => {
   if (process.env.NODE_ENV !== 'production') {
     console.warn(
-      '⚠️  usePortfolioSummary is deprecated. Use usePortfolioData or usePortfolioDataWithErrors instead.'
+      '⚠️  usePortfolioSummary is deprecated. Use usePortfolioData or usePortfolioDataWithErrors instead.',
     );
   }
-  
+
   return useQuery({
     queryKey: [QUERY_KEYS.PORTFOLIO_SUMMARY],
     queryFn: () => apiClient.getPortfolioSummary(),
@@ -182,7 +186,11 @@ export const usePortfolioDataWithErrors = (
     retry: (failureCount, error) => {
       const parsedError = parsePortfolioError(error);
       // Don't retry certain errors
-      if (['NO_STATE', 'NO_ACTIVE_STRATEGY', 'TOO_MANY_REQUESTS'].includes(parsedError.errorType || '')) {
+      if (
+        ['NO_STATE', 'NO_ACTIVE_STRATEGY', 'TOO_MANY_REQUESTS'].includes(
+          parsedError.errorType || '',
+        )
+      ) {
         return false;
       }
       return failureCount < 2;
@@ -202,22 +210,26 @@ export const usePortfolioDataWithErrors = (
   return {
     ...stateQuery,
     // Convert successful state to summary format
-    data: stateQuery.data?.state ? {
-      status: 'success' as const,
-      portfolio: portfolioStateToSummary(stateQuery.data.state),
-      message: '✨ Using PortfolioState API',
-    } : undefined,
-    
+    data: stateQuery.data?.state
+      ? {
+          status: 'success' as const,
+          portfolio: portfolioStateToSummary(stateQuery.data.state),
+          message: '✨ Using PortfolioState API',
+        }
+      : undefined,
+
     // Enhanced error information
     errorDetails,
-    
+
     // Stale data information
     isStale,
     timeAgo,
     timestamp,
-    
+
     // Convenience flags
     hasData: Boolean(stateQuery.data?.state),
-    isEmpty: Boolean(stateQuery.data?.state && !stateQuery.data.state.positions),
+    isEmpty: Boolean(
+      stateQuery.data?.state && !stateQuery.data.state.positions,
+    ),
   };
 };

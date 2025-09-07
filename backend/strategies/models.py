@@ -15,6 +15,12 @@ from django.utils import timezone
 
 from botbalance.exchanges.models import ExchangeAccount
 
+from .constants import (
+    SUPPORTED_QUOTE_ASSETS,
+    is_valid_allocation_asset,
+    is_valid_quote_asset,
+)
+
 
 class Strategy(models.Model):
     """
@@ -49,12 +55,15 @@ class Strategy(models.Model):
         help_text="Order size as percentage of NAV (1.00-100.00%)",
     )
 
-    min_delta_quote = models.DecimalField(
-        max_digits=10,
+    min_delta_pct = models.DecimalField(
+        max_digits=5,
         decimal_places=2,
-        default=Decimal("10.00"),
-        validators=[MinValueValidator(Decimal("0.01"))],
-        help_text="Minimum delta in quote currency (USDT) to trigger rebalancing",
+        default=Decimal("0.10"),
+        validators=[
+            MinValueValidator(Decimal("0.01")),
+            MaxValueValidator(Decimal("10.00")),
+        ],
+        help_text="Minimum delta as percentage of target value (0.01-10.00%) to trigger rebalancing",
     )
 
     order_step_pct = models.DecimalField(
@@ -83,11 +92,7 @@ class Strategy(models.Model):
     # Quote Asset Configuration
     quote_asset = models.CharField(
         max_length=10,
-        choices=[
-            ("USDT", "USDT"),
-            ("USDC", "USDC"),
-            ("BTC", "BTC"),
-        ],
+        choices=SUPPORTED_QUOTE_ASSETS,
         default="USDT",
         help_text="Базовая валюта стратегии",
     )
@@ -140,10 +145,12 @@ class Strategy(models.Model):
                 {"order_size_pct": "Order size must be between 1.00% and 100.00%"}
             )
 
-        # Validate min_delta_quote
-        if self.min_delta_quote <= 0:
+        # Validate min_delta_pct
+        if self.min_delta_pct <= 0 or self.min_delta_pct > 10:
             raise ValidationError(
-                {"min_delta_quote": "Minimum delta must be greater than 0"}
+                {
+                    "min_delta_pct": "Minimum delta percentage must be between 0.01% and 10.00%"
+                }
             )
 
         # Validate order_step_pct
@@ -160,18 +167,24 @@ class Strategy(models.Model):
                 }
             )
 
-        # Validate allocation symbols match quote_asset
-        if self.pk:  # Only validate if strategy exists (has allocations)
-            invalid_symbols = []
-            for allocation in self.allocations.all():
-                if not allocation.asset.endswith(self.quote_asset):
-                    invalid_symbols.append(allocation.asset)
+        # Validate quote_asset using constants
+        if self.quote_asset and not is_valid_quote_asset(self.quote_asset):
+            raise ValidationError(
+                {
+                    "quote_asset": f"Invalid quote asset '{self.quote_asset}'. Must be one of: {', '.join(asset[0] for asset in SUPPORTED_QUOTE_ASSETS)}"
+                }
+            )
 
-            if invalid_symbols:
+        # Validate that at least one allocation is the quote_asset (cash position)
+        if self.pk:  # Only validate if strategy exists (has allocations)
+            allocation_assets = [
+                allocation.asset for allocation in self.allocations.all()
+            ]
+            if allocation_assets and self.quote_asset not in allocation_assets:
                 raise ValidationError(
                     {
-                        "quote_asset": f"All allocation symbols must end with {self.quote_asset}. "
-                        f"Invalid symbols: {', '.join(invalid_symbols)}"
+                        "quote_asset": f"Strategy must include {self.quote_asset} allocation for cash management. "
+                        f"Current allocations: {', '.join(allocation_assets)}"
                     }
                 )
 
@@ -256,7 +269,7 @@ class StrategyAllocation(models.Model):
         verbose_name_plural = "Strategy Allocations"
 
     def __str__(self):
-        return "{} - {}: {}%".format(self.strategy.name, self.asset, self.target_percentage)
+        return f"{self.strategy.name} - {self.asset}: {self.target_percentage}%"
 
     def clean(self):
         """Validate model fields."""
@@ -276,16 +289,15 @@ class StrategyAllocation(models.Model):
                 }
             )
 
-        # Validate asset symbol matches strategy's quote_asset
-        if self.strategy_id and self.asset:
-            strategy = self.strategy
-            if not self.asset.endswith(strategy.quote_asset):
-                raise ValidationError(
-                    {
-                        "asset": f"Asset symbol '{self.asset}' must end with strategy's quote asset '{strategy.quote_asset}'. "
-                        f"Example: 'BTC{strategy.quote_asset}' instead of '{self.asset}'"
-                    }
-                )
+        # Validate asset against supported allocation assets
+        if self.asset and not is_valid_allocation_asset(self.asset):
+            from .constants import ALL_ALLOCATION_ASSETS
+
+            raise ValidationError(
+                {
+                    "asset": f"Invalid asset '{self.asset}'. Must be one of: {', '.join(ALL_ALLOCATION_ASSETS)}"
+                }
+            )
 
     def save(self, *args, **kwargs):
         """Override save to run validation."""
@@ -354,9 +366,7 @@ class RebalanceExecution(models.Model):
 
     def __str__(self):
         return "{} - {} ({})".format(
-            self.strategy.name, 
-            self.created_at.strftime('%Y-%m-%d %H:%M'), 
-            self.status
+            self.strategy.name, self.created_at.strftime("%Y-%m-%d %H:%M"), self.status
         )
 
     def mark_completed(self):
