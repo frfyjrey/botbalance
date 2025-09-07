@@ -10,7 +10,8 @@ paths = [
     ".env.example",
     ".env.template", 
     "README.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "backend/tests/testnet_smoke_live_test.py"
 ]
 regexes = [
     # Demo/test credentials

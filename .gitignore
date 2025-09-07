@@ -117,9 +117,6 @@ dump.rdb
 # Celery
 celerybeat-schedule*
 
-# Test files with credentials
-backend/tests/testnet_smoke_live_test.py
-
 # GCP service account keys
 *.json
 github-actions-key.json
