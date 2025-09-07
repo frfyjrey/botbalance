@@ -9,7 +9,6 @@
 - `ENABLE_ORDER_POLLING=false` (на первом прогоне)
 - `BINANCE_SPOT_TESTNET_API_KEY=...`
 - `BINANCE_SPOT_TESTNET_API_SECRET=...`
-- `BINANCE_TESTNET_ACTIVE_SYMBOLS=BTCUSDT,ETHUSDT,BNBUSDT`
 - Для pytest‑смока:
   - `MANUAL_SMOKE=true`
   - `API_BASE=http://localhost:8000` (или ваш адрес)
