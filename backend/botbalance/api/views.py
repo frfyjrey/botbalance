@@ -11,6 +11,7 @@ from celery.result import AsyncResult
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import connection
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -706,7 +707,7 @@ def user_balances_view(request):
             "account_type": exchange_account.account_type,
             "balances": balances_data,
             "total_usd_value": total_usd_value,
-            "timestamp": datetime.now(),
+            "timestamp": timezone.now(),
         }
 
         return Response(response_data)
@@ -726,28 +727,7 @@ def user_balances_view(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
-
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def portfolio_summary_view(request):
-    """
-    [DEPRECATED] Get user's portfolio summary with NAV, asset allocations, and performance data.
-
-    ⚠️  DEPRECATED: This endpoint is being phased out in favor of PortfolioState architecture.
-    ⚠️  Use the new endpoints instead:
-    ⚠️    - GET /api/me/portfolio/state/ - for current portfolio state (faster)
-    ⚠️    - POST /api/me/portfolio/state/refresh/ - for manual refresh
-
-    Legacy endpoint for Step 2: Provides complete portfolio snapshot including:
-    - Total Net Asset Value (NAV) in USD
-    - Individual asset balances and values
-    - Percentage allocation of each asset
-    - Price cache statistics and data sources
-
-    Returns 200 with portfolio data or appropriate error response.
-
-    NOTE: As of Step 5, this endpoint no longer creates portfolio snapshots.
-    """
+    # portfolio_summary_view removed - use portfolio_state_view instead
     import asyncio
     import logging
 

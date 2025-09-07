@@ -26,7 +26,7 @@ task_patterns = [
 # User account management URLs
 me_patterns = [
     path("balances/", views.user_balances_view, name="balances"),
-    path("portfolio/summary/", views.portfolio_summary_view, name="portfolio_summary"),
+    # portfolio/summary/ endpoint removed - use portfolio/state/ instead
     path(
         "portfolio/snapshots/",
         views.portfolio_snapshots_list_view,

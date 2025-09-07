@@ -6,7 +6,7 @@ import type {
 } from '@tanstack/react-query';
 
 import { apiClient } from '@shared/lib/api';
-import { QUERY_KEYS, FEATURE_FLAGS } from '@shared/config/constants';
+import { QUERY_KEYS } from '@shared/config/constants';
 import {
   parsePortfolioError,
   formatTimeAgo,
@@ -182,7 +182,7 @@ export const usePortfolioDataWithErrors = (
   options?: Partial<UseQueryOptions<PortfolioSummaryResponse, Error>>,
 ) => {
   const stateQuery = usePortfolioState(params, {
-    enabled: FEATURE_FLAGS.STATE_API, // Controlled by feature flag
+    enabled: true, // State API is now default (feature flag removed)
     retry: (failureCount, error) => {
       const parsedError = parsePortfolioError(error);
       // Don't retry certain errors

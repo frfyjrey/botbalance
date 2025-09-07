@@ -3,12 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@shared/ui/Button';
 import { formatNumberEnUS } from '@shared/lib/utils';
 import {
-  usePortfolioData,
   usePortfolioDataWithErrors,
   useRefreshPortfolioState,
   type PortfolioAsset,
 } from '@entities/portfolio';
-import { FEATURE_FLAGS } from '@shared/config/constants';
 import { PortfolioErrorDisplay } from './portfolio-error-display';
 import { StaleDataBadge } from './stale-data-badge';
 import {
@@ -88,12 +86,8 @@ export const PortfolioAssetsCard: React.FC<PortfolioAssetsCardProps> = ({
 }) => {
   const { t } = useTranslation('dashboard');
 
-  // Use enhanced hook if feature flag enabled, fallback to original
-  const enhancedQuery = usePortfolioDataWithErrors();
-  const fallbackQuery = usePortfolioData();
-  const portfolioQuery = FEATURE_FLAGS.STATE_API
-    ? enhancedQuery
-    : fallbackQuery;
+  // Use State API (feature flag removed - State API is now default)
+  const portfolioQuery = usePortfolioDataWithErrors();
 
   const { data: balancesData, isLoading, isError } = useBalances();
   const [showAll, setShowAll] = React.useState(false);
@@ -169,7 +163,6 @@ export const PortfolioAssetsCard: React.FC<PortfolioAssetsCardProps> = ({
 
   // Enhanced error handling for PortfolioState API
   if (
-    FEATURE_FLAGS.STATE_API &&
     'errorDetails' in portfolioQuery &&
     portfolioQuery.errorDetails?.isError
   ) {
@@ -283,7 +276,7 @@ export const PortfolioAssetsCard: React.FC<PortfolioAssetsCardProps> = ({
             </h3>
 
             {/* Stale data and quote asset badges */}
-            {FEATURE_FLAGS.STATE_API && 'isStale' in portfolioQuery && (
+            {'isStale' in portfolioQuery && (
               <StaleDataBadge
                 isStale={
                   'isStale' in portfolioQuery

@@ -7,6 +7,7 @@ and fallback mechanisms for cryptocurrency prices.
 
 import asyncio
 import logging
+import time
 from datetime import datetime
 from decimal import Decimal
 
@@ -182,43 +183,80 @@ class PriceService:
         Returns:
             Dictionary mapping symbols to prices
         """
+        start_time = time.time()
         symbols = [s.upper() for s in symbols]
+        symbol_count = len(symbols)
+        adapter_name = (
+            adapter.exchange()
+            if hasattr(adapter, "exchange")
+            else adapter.__class__.__name__.lower()
+        )
+        method_used = "unknown"
+        error_code = None
         results: dict[str, Decimal | None] = {}
 
-        # Check if adapter has native batch pricing support
-        if hasattr(adapter, "get_prices_batch"):
-            try:
-                logger.debug(f"Using native batch pricing from {adapter.exchange()}")
-                return await adapter.get_prices_batch(symbols)
-            except Exception as e:
-                logger.warning(
-                    f"Native batch pricing failed for {adapter.exchange()}: {e}"
+        try:
+            # Check if adapter has native batch pricing support
+            if hasattr(adapter, "get_prices_batch"):
+                try:
+                    method_used = "native"
+                    logger.debug(f"Using native batch pricing from {adapter_name}")
+                    results = await adapter.get_prices_batch(symbols)
+                except Exception as e:
+                    error_code = e.__class__.__name__
+                    logger.warning(
+                        f"Native batch pricing failed for {adapter_name}: {e}"
+                    )
+                    # Fall through to sequential approach
+                    method_used = "fallback"
+            else:
+                method_used = "fallback"
+
+            # Fallback: safe sequential calls with rate limiting
+            if method_used == "fallback":
+                logger.debug(
+                    f"Using sequential pricing for {adapter_name}, {symbol_count} symbols"
                 )
-                # Fall through to sequential approach
 
-        # Fallback: safe sequential calls with rate limiting
-        logger.debug(
-            f"Using sequential pricing for {adapter.exchange()}, {len(symbols)} symbols"
-        )
+                for i, symbol in enumerate(symbols):
+                    try:
+                        price = await adapter.get_price(symbol)
+                        results[symbol] = price
 
-        for i, symbol in enumerate(symbols):
-            try:
-                price = await adapter.get_price(symbol)
-                results[symbol] = price
+                        # Rate limiting: small delay between calls to be respectful
+                        if i < len(symbols) - 1:  # Don't sleep after last symbol
+                            await asyncio.sleep(0.05)  # 50ms between calls
 
-                # Rate limiting: small delay between calls to be respectful
-                if i < len(symbols) - 1:  # Don't sleep after last symbol
-                    await asyncio.sleep(0.05)  # 50ms between calls
+                    except Exception as e:
+                        if error_code is None:  # Only set first error
+                            error_code = e.__class__.__name__
+                        logger.warning(
+                            f"Failed to get price for {symbol} from {adapter_name}: {e}"
+                        )
+                        results[symbol] = None
 
-            except Exception as e:
-                logger.warning(
-                    f"Failed to get price for {symbol} from {adapter.exchange()}: {e}"
-                )
-                results[symbol] = None
+        except Exception as e:
+            error_code = e.__class__.__name__
+            logger.error(f"Critical error in batch pricing for {adapter_name}: {e}")
+            # Return empty results on critical error
+            results = dict.fromkeys(symbols)
 
-        logger.info(
-            f"Fetched {len([p for p in results.values() if p])}/{len(symbols)} prices from {adapter.exchange()}"
-        )
+        finally:
+            # Calculate metrics
+            latency_ms = int((time.time() - start_time) * 1000)
+            successful_prices = len([p for p in results.values() if p is not None])
+            missing_prices_count = symbol_count - successful_prices
+
+            # Smart logging: info for high-impact operations, debug otherwise
+            should_log_info = latency_ms > 1000 or symbol_count > 10
+            log_level = logger.info if should_log_info else logger.debug
+
+            log_level(
+                f"Price batch metrics: count={symbol_count}, latency_ms={latency_ms}, "
+                f"adapter={adapter_name}, used={method_used}, "
+                f"missing_prices_count={missing_prices_count}, error_code={error_code or 'none'}"
+            )
+
         return results
 
     def get_cached_prices(self, symbols: list[str]) -> dict[str, dict | None]:

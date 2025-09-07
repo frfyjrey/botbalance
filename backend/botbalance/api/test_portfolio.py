@@ -2,15 +2,12 @@
 Tests for portfolio functionality (Step 2: Portfolio Snapshot).
 """
 
-import asyncio
 from datetime import datetime
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from django.contrib.auth.models import User
 from django.test import TestCase
-from django.urls import reverse
-from rest_framework import status
 from rest_framework.test import APIClient
 
 from botbalance.exchanges.models import ExchangeAccount
@@ -229,120 +226,7 @@ class PortfolioAPITest(TestCase):
         # Login user
         self.client.force_authenticate(user=self.user)  # type: ignore[attr-defined]
 
-    @patch(
-        "botbalance.exchanges.portfolio_service.portfolio_service.calculate_portfolio_summary"
-    )
-    def test_portfolio_summary_success(self, mock_calculate):
-        """Test successful portfolio summary API call."""
-
-        # Create mock summary using coroutine
-        async def create_mock_summary():
-            mock_assets = [
-                PortfolioAsset(
-                    "BTC",
-                    Decimal("0.5"),
-                    Decimal("43250.50"),
-                    Decimal("21625.25"),
-                    Decimal("75.0"),
-                    "cached",
-                ),
-                PortfolioAsset(
-                    "USDT",
-                    Decimal("1000.0"),
-                    Decimal("1.0"),
-                    Decimal("1000.0"),
-                    Decimal("25.0"),
-                    "stablecoin",
-                ),
-            ]
-
-            return PortfolioSummary(
-                total_nav=Decimal("22625.25"),
-                assets=mock_assets,
-                quote_currency="USDT",
-                timestamp=datetime(2024, 1, 1, 12, 0, 0),
-                exchange_account="Test Binance Account",
-                price_cache_stats={
-                    "cache_backend": "redis",
-                    "default_ttl": 300,
-                    "stale_threshold": 600,
-                    "supported_quotes": ["USDT", "USDC"],
-                },
-            )
-
-        # Set up mock to return the coroutine result
-        mock_summary = asyncio.run(create_mock_summary())
-        mock_calculate.return_value = mock_summary
-
-        url = reverse("api:me:portfolio_summary")
-        response = self.client.get(url)
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-        data = response.json()
-        self.assertEqual(data["status"], "success")
-        self.assertIn("portfolio", data)
-
-        portfolio = data["portfolio"]
-        self.assertEqual(float(portfolio["total_nav"]), 22625.25)
-        self.assertEqual(len(portfolio["assets"]), 2)
-        self.assertEqual(portfolio["quote_currency"], "USDT")
-        self.assertEqual(portfolio["exchange_account"], "Test Binance Account")
-
-        # Check first asset
-        btc_asset = portfolio["assets"][0]
-        self.assertEqual(btc_asset["symbol"], "BTC")
-        self.assertEqual(float(btc_asset["balance"]), 0.5)
-        self.assertEqual(float(btc_asset["percentage"]), 75.0)
-        self.assertEqual(btc_asset["price_source"], "cached")
-
-    def test_portfolio_summary_no_exchange_account(self):
-        """Test portfolio summary API with no exchange account."""
-
-        # Delete the exchange account
-        self.exchange_account.delete()
-
-        url = reverse("api:me:portfolio_summary")
-        response = self.client.get(url)
-
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-
-        data = response.json()
-        self.assertEqual(data["status"], "error")
-        self.assertEqual(data["error_code"], "NO_EXCHANGE_ACCOUNTS")
-        self.assertIn("No active exchange accounts found", data["message"])
-
-    @patch(
-        "botbalance.exchanges.portfolio_service.portfolio_service.calculate_portfolio_summary"
-    )
-    def test_portfolio_summary_calculation_failed(self, mock_calculate):
-        """Test portfolio summary API when calculation fails."""
-
-        # Mock calculation failure
-        async def failed_calculation():
-            return None
-
-        mock_calculate.return_value = asyncio.run(failed_calculation())
-
-        url = reverse("api:me:portfolio_summary")
-        response = self.client.get(url)
-
-        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
-
-        data = response.json()
-        self.assertEqual(data["status"], "error")
-        self.assertEqual(data["error_code"], "PORTFOLIO_CALCULATION_FAILED")
-
-    def test_portfolio_summary_unauthenticated(self):
-        """Test portfolio summary API without authentication."""
-
-        # Logout user
-        self.client.force_authenticate(user=None)  # type: ignore[attr-defined]
-
-        url = reverse("api:me:portfolio_summary")
-        response = self.client.get(url)
-
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+    # portfolio_summary tests removed - use portfolio_state API instead
 
 
 class PriceServiceTest(TestCase):
