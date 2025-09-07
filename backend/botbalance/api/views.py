@@ -1447,7 +1447,21 @@ def cancel_order_view(request, order_id: int):
             )
 
         try:
-            ok = asyncio.run(adapter.cancel_order(str(target_id), account="spot"))
+            # Determine if target_id is client_order_id or exchange_order_id
+            if target_id == order.client_order_id:
+                ok = asyncio.run(
+                    adapter.cancel_order(
+                        symbol=order.symbol,
+                        client_order_id=str(target_id),
+                        account="spot",
+                    )
+                )
+            else:
+                ok = asyncio.run(
+                    adapter.cancel_order(
+                        symbol=order.symbol, order_id=str(target_id), account="spot"
+                    )
+                )
             if ok:
                 order.mark_cancelled()
                 return Response({"status": "success", "order_id": order.id})

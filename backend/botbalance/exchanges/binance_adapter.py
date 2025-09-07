@@ -166,19 +166,13 @@ class BinanceAdapter(ExchangeAdapter):
             os.getenv("EXCHANGE_ENV", getattr(settings, "EXCHANGE_ENV", "mock")).lower()
             == "mock"
         ):
+            # Basic validation only - no normalization (should be done by caller)
             mock_exchange_info = self._get_mock_exchange_info(symbol)
-            adjusted_price = self._round_to_tick_size(
-                limit_price, mock_exchange_info["tick_size"]
-            )
-            quantity = quote_amount / adjusted_price
-            adjusted_quantity = self._round_to_lot_size(
-                quantity, mock_exchange_info["lot_size"]
-            )
-            adjusted_quote_amount = adjusted_quantity * adjusted_price
-            if adjusted_quote_amount < mock_exchange_info["min_notional"]:
+            if quote_amount < mock_exchange_info["min_notional"]:
                 raise InvalidOrderError(
-                    f"Order value {adjusted_quote_amount} is below minimum notional {mock_exchange_info['min_notional']} for {symbol}"
+                    f"Order value {quote_amount} is below minimum notional {mock_exchange_info['min_notional']} for {symbol}"
                 )
+
             await asyncio.sleep(0.3)
             exchange_order_id = str(100000 + abs(hash(client_order_id)) % 900000)
             now_iso = datetime.now(UTC).isoformat()
@@ -188,39 +182,41 @@ class BinanceAdapter(ExchangeAdapter):
                 "symbol": symbol.upper(),
                 "side": side,
                 "status": "PENDING",
-                "limit_price": adjusted_price,
-                "quote_amount": adjusted_quote_amount,
+                "limit_price": limit_price,  # Use exact price from caller
+                "quote_amount": quote_amount,  # Use exact amount from caller
                 "filled_amount": Decimal("0.00000000"),
                 "created_at": now_iso,
                 "updated_at": None,
             }
             logger.info(
-                f"BinanceAdapter.place_order() created order {exchange_order_id} for {adjusted_quote_amount} {symbol} (mock)"
+                f"BinanceAdapter.place_order() created order {exchange_order_id} for {quote_amount} {symbol} (mock)"
             )
             # remember mapping for potential cancel in mock mode
             self._remember_order_mapping(order_response)
             return order_response
 
-        # Real env: fetch filters, normalize, submit
+        # Real env: basic validation and submit (no normalization - should be done by caller)
         info = await self._get_exchange_info_cached(symbol)
-        adjusted_price = self._round_to_tick_size(
-            limit_price, Decimal(str(info["tick_size"]))
-        )
-        base_qty = quote_amount / adjusted_price
-        adjusted_qty = self._round_to_lot_size(base_qty, Decimal(str(info["lot_size"])))
-        adjusted_quote_amount = adjusted_qty * adjusted_price
-        if adjusted_quote_amount < Decimal(str(info["min_notional"])):
+        if quote_amount < Decimal(str(info["min_notional"])):
             raise InvalidOrderError(
-                f"Order value {adjusted_quote_amount} is below minimum notional {info['min_notional']} for {symbol}"
+                f"Order value {quote_amount} is below minimum notional {info['min_notional']} for {symbol}"
             )
+
+        # Calculate quantity from normalized price and quote_amount
+        base_qty = quote_amount / limit_price
+
+        # Format numbers for Binance API (remove scientific notation and excessive precision)
+        # Binance expects max 8 decimals for price and quantity
+        quantity_str = f"{base_qty:.8f}".rstrip("0").rstrip(".")
+        price_str = f"{limit_price:.8f}".rstrip("0").rstrip(".")
 
         params = {
             "symbol": symbol.upper(),
             "side": side.upper(),
             "type": "LIMIT",
             "timeInForce": "GTC",
-            "quantity": f"{adjusted_qty:f}",
-            "price": f"{adjusted_price:f}",
+            "quantity": quantity_str,
+            "price": price_str,
             "newClientOrderId": client_order_id,
         }
         data = await self._signed_request("POST", "/api/v3/order", params=params)
@@ -233,8 +229,8 @@ class BinanceAdapter(ExchangeAdapter):
             "symbol": symbol.upper(),
             "side": side,
             "status": "PENDING",
-            "limit_price": adjusted_price,
-            "quote_amount": adjusted_quote_amount,
+            "limit_price": limit_price,  # Use exact price from caller
+            "quote_amount": quote_amount,  # Use exact amount from caller
             "filled_amount": Decimal("0.00000000"),
             "created_at": now_iso,
             "updated_at": None,
@@ -555,6 +551,10 @@ class BinanceAdapter(ExchangeAdapter):
         """Round quantity to exchange lot size."""
         return (quantity // lot_size) * lot_size
 
+    def get_exchange_filters(self, symbol: str) -> dict[str, Decimal]:
+        """Get exchange trading filters for a symbol."""
+        return self._get_mock_exchange_info(symbol)
+
     # Normalize order according to mock exchange info (tick/lot/minNotional)
     def normalize_order(
         self, *, symbol: str, limit_price: Decimal, quote_amount: Decimal
@@ -563,6 +563,8 @@ class BinanceAdapter(ExchangeAdapter):
         Normalize price and derive base quantity per Binance tick/lot rules (mock).
 
         Returns: (adjusted_price, adjusted_base_qty)
+
+        DEPRECATED: Use get_exchange_filters() with normalization.py functions instead.
         """
         self.validate_symbol(symbol)
         if limit_price <= 0 or quote_amount <= 0:

@@ -248,6 +248,17 @@ CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60  # 25 minutes
 CELERY_WORKER_SEND_TASK_EVENTS = True
 CELERY_TASK_SEND_SENT_EVENT = True
 
+# Beat Schedule for periodic tasks
+CELERY_BEAT_SCHEDULE = {
+    "poll-orders": {
+        "task": "botbalance.tasks.tasks.poll_orders_task",
+        "schedule": 30.0,  # Every 30 seconds
+        "options": {
+            "expires": 25
+        },  # Task expires in 25 seconds to prevent accumulation
+    },
+}
+
 
 # =============================================================================
 # LOGGING

@@ -373,27 +373,60 @@ class RebalanceService:
                 if order_price is not None:
                     order_price = self._round_decimal(order_price, 8)
 
-                    # Normalize early using adapter (tick/lot)
+                    # Normalize using centralized normalization functions
                     try:
+                        from botbalance.exchanges.normalization import (
+                            ExchangeFilters,
+                            calculate_quote_amount,
+                            normalize_price,
+                            normalize_quantity,
+                            validate_min_notional,
+                        )
+
                         symbol = f"{asset}{quote_currency}"
-                        n_price, n_base_qty = adapter.normalize_order(
-                            symbol=symbol,
-                            limit_price=order_price,
-                            quote_amount=order_amount,
+                        filters_dict = adapter.get_exchange_filters(symbol)
+                        filters = ExchangeFilters(
+                            tick_size=filters_dict["tick_size"],
+                            lot_size=filters_dict["lot_size"],
+                            min_notional=filters_dict["min_notional"],
                         )
-                        normalized_order_price = self._round_decimal(n_price, 8)
-                        normalized_order_volume = self._round_decimal(n_base_qty, 8)
-                        order_amount_normalized = self._round_decimal(
-                            normalized_order_price * normalized_order_volume, 2
+
+                        # Normalize price and quantity
+                        normalized_order_price = normalize_price(order_price, filters)
+                        raw_base_qty = order_amount / normalized_order_price
+                        normalized_order_volume = normalize_quantity(
+                            raw_base_qty, filters
                         )
-                    except Exception:
+                        order_amount_normalized = calculate_quote_amount(
+                            normalized_order_price, normalized_order_volume
+                        )
+
+                        # Validate minimum notional (log warning if fails)
+                        if not validate_min_notional(
+                            normalized_order_price, normalized_order_volume, filters
+                        ):
+                            logger.warning(
+                                f"Order for {symbol} below min_notional: "
+                                f"{order_amount_normalized} < {filters.min_notional}"
+                            )
+
+                        # Round for storage precision
+                        normalized_order_price = self._round_decimal(
+                            normalized_order_price, 8
+                        )
+                        normalized_order_volume = self._round_decimal(
+                            normalized_order_volume, 8
+                        )
+                        # Keep full precision for quote amount (don't round to 2 decimals)
+                        order_amount_normalized = order_amount_normalized
+
+                    except Exception as e:
+                        logger.error(f"Normalization failed for {asset}: {e}")
                         # If normalization fails, keep pre-normalized values
                         normalized_order_price = order_price
                         normalized_order_volume = order_volume
                         if order_price is not None and order_volume is not None:
-                            order_amount_normalized = self._round_decimal(
-                                order_price * order_volume, 2
-                            )
+                            order_amount_normalized = order_price * order_volume
 
             rebalance_action = RebalanceAction(
                 asset=asset,

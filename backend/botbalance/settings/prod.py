@@ -191,6 +191,17 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
     "brpop_timeout": int(os.getenv("CELERY_BROKER_BRPOP_TIMEOUT", "60")),
 }
 
+# Beat Schedule for periodic tasks (same as base.py)
+CELERY_BEAT_SCHEDULE = {
+    "poll-orders": {
+        "task": "botbalance.tasks.tasks.poll_orders_task",
+        "schedule": 30.0,  # Every 30 seconds
+        "options": {
+            "expires": 25
+        },  # Task expires in 25 seconds to prevent accumulation
+    },
+}
+
 # =============================================================================
 # LOGGING FOR PRODUCTION
 # =============================================================================

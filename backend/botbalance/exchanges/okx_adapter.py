@@ -423,6 +423,15 @@ class OKXAdapter(ExchangeAdapter):
 
         return symbol
 
+    def get_exchange_filters(self, symbol: str) -> dict[str, Decimal]:
+        """Get exchange trading filters for a symbol (mock implementation)."""
+        # TODO: Implement real OKX filters when needed
+        return {
+            "tick_size": Decimal("0.01"),
+            "lot_size": Decimal("0.001"),
+            "min_notional": Decimal("5.00"),
+        }
+
     async def ping(self) -> bool:
         """Test connectivity to OKX."""
         await self._request("GET", "/api/v5/public/time")

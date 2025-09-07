@@ -238,5 +238,20 @@ class ExchangeAdapter(ABC):
 
         Returns a tuple of (normalized_limit_price, normalized_base_qty).
         Default implementation raises NotImplementedError; adapters should override.
+
+        DEPRECATED: Use get_exchange_filters() with normalization.py functions instead.
         """
         raise NotImplementedError("normalize_order() must be implemented by adapter")
+
+    def get_exchange_filters(self, symbol: str) -> dict[str, Decimal]:
+        """
+        Get exchange trading filters for a symbol.
+
+        Returns:
+            Dict with 'tick_size', 'lot_size', and 'min_notional' for the symbol
+
+        Should be overridden by adapters to provide symbol-specific filters.
+        """
+        raise NotImplementedError(
+            "get_exchange_filters() must be implemented by adapter"
+        )

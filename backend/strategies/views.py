@@ -771,7 +771,7 @@ def rebalance_execute_view(request):
             # Use 30-second tick for idempotent client ids
             ts_tick = int(floor(timezone.now().timestamp() / 30)) * 30
 
-            for index, action in enumerate(rebalance_plan.actions):
+            for action in rebalance_plan.actions:
                 # Skip orders for quote currency pairs like USDTUSDT
                 if action.asset == str(rebalance_plan.quote_currency):
                     logger.info(
@@ -786,33 +786,25 @@ def rebalance_execute_view(request):
                     )
                     continue
 
-                # Determine order parameters
+                # Use normalized order parameters from plan (no recalculation)
                 symbol = action.asset + "USDT"  # Assuming USDT pairs for now
                 side = "buy" if action.delta_value > 0 else "sell"
-                # Use order_amount from Engine (capped by order_size_pct)
-                quote_amount = (
-                    abs(action.order_amount)
-                    if action.order_amount is not None
-                    else abs(action.delta_value)
-                )
 
-                # Use precomputed order_price from plan (Engine logic: buy below, sell above)
-                limit_price = action.order_price
-                if not limit_price:
-                    # Fallback: compute from market price and step pct (buy below, sell above)
-                    market_price = action.market_price
-                    if not market_price:
-                        logger.warning(f"No market price for {symbol}, skipping order")
-                        continue
-                    step = strategy.order_step_pct / Decimal("100")
-                    limit_price = (
-                        market_price * (Decimal("1") - step)
-                        if side == "buy"
-                        else market_price * (Decimal("1") + step)
+                # Use already normalized values from rebalance plan
+                if (
+                    action.normalized_order_price is None
+                    or action.order_amount_normalized is None
+                ):
+                    logger.warning(
+                        f"Missing normalized order data for {symbol}, skipping order"
                     )
+                    continue
 
-                # Generate client order ID for idempotency
-                coid_seed = f"{request.user.id}:{symbol}:{side}:{ts_tick}:{index}"
+                limit_price = action.normalized_order_price
+                quote_amount = action.order_amount_normalized
+
+                # Generate client order ID for idempotency using normalized values
+                coid_seed = f"{request.user.id}:{symbol}:{side}:{limit_price}:{quote_amount}:{ts_tick}"
                 client_order_id = hashlib.sha1(coid_seed.encode()).hexdigest()[:20]
 
                 # Place order through exchange adapter

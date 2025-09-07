@@ -106,6 +106,7 @@ import os
 
 os.environ["EXCHANGE_ENV"] = "live"  # mock | live
 os.environ["ENABLE_SMOKE_TESTS"] = "true"  # Включаем smoke тесты для разработки
+os.environ["ENABLE_ORDER_POLLING"] = "true"  # Включаем polling для разработки
 
 # =============================================================================
 # JWT SETTINGS FOR DEVELOPMENT (longer sessions to avoid frequent logouts)
