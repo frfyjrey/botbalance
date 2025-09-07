@@ -256,7 +256,7 @@ class StrategyAllocation(models.Model):
         verbose_name_plural = "Strategy Allocations"
 
     def __str__(self):
-        return f"{self.strategy.name} - {self.asset}: {self.target_percentage}%"
+        return "{} - {}: {}%".format(self.strategy.name, self.asset, self.target_percentage)
 
     def clean(self):
         """Validate model fields."""
@@ -353,7 +353,11 @@ class RebalanceExecution(models.Model):
         verbose_name_plural = "Rebalance Executions"
 
     def __str__(self):
-        return f"{self.strategy.name} - {self.created_at.strftime('%Y-%m-%d %H:%M')} ({self.status})"
+        return "{} - {} ({})".format(
+            self.strategy.name, 
+            self.created_at.strftime('%Y-%m-%d %H:%M'), 
+            self.status
+        )
 
     def mark_completed(self):
         """Mark execution as completed."""

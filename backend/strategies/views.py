@@ -248,12 +248,15 @@ def rebalance_plan_view(request):
         )
 
         try:
+            logger.info(f"Calling calculate_rebalance_plan for strategy: {strategy.name}")
             plan = asyncio.run(
                 rebalance_service.calculate_rebalance_plan(
                     strategy, exchange_account, force_refresh
                 )
             )
+            logger.info(f"Successfully calculated rebalance plan")
         except NoPricingDataError as e:
+            logger.warning(f"Caught NoPricingDataError: {e}")
             return Response(
                 {
                     "status": "error",
@@ -263,6 +266,7 @@ def rebalance_plan_view(request):
                 status=status.HTTP_422_UNPROCESSABLE_ENTITY,
             )
         except NoActiveStrategyError as e:
+            logger.warning(f"Caught NoActiveStrategyError: {e} - returning HTTP 409")
             return Response(
                 {
                     "status": "error",
@@ -507,6 +511,7 @@ def rebalance_execute_view(request):
                 status=status.HTTP_422_UNPROCESSABLE_ENTITY,
             )
         except NoActiveStrategyError as e:
+            logger.warning(f"Caught NoActiveStrategyError in execute: {e} - returning HTTP 409")
             return Response(
                 {
                     "status": "error",
