@@ -158,9 +158,9 @@ def _create_or_update_strategy(request):
                 if hasattr(e, "message_dict"):
                     errors = e.message_dict
                 elif hasattr(e, "messages"):
-                    error_message = "; ".join(e.messages)
+                    error_message = "Validation failed: multiple errors"
                 else:
-                    error_message = str(e)
+                    error_message = "Validation failed: invalid input"
 
                 return Response(
                     {
@@ -441,7 +441,7 @@ def rebalance_plan_view(request):
             return Response(
                 {
                     "status": "error",
-                    "message": str(e),
+                    "message": "Rebalance operation failed",
                     "error_code": e.error_code,
                 },
                 status=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -451,7 +451,7 @@ def rebalance_plan_view(request):
             return Response(
                 {
                     "status": "error",
-                    "message": str(e),
+                    "message": "Rebalance operation failed",
                     "error_code": e.error_code,
                 },
                 status=status.HTTP_409_CONFLICT,
@@ -460,7 +460,7 @@ def rebalance_plan_view(request):
             return Response(
                 {
                     "status": "error",
-                    "message": str(e),
+                    "message": "Rebalance operation failed",
                     "error_code": e.error_code,
                     "retry_after_seconds": 5,  # Suggest retry after cooldown
                 },
@@ -470,7 +470,7 @@ def rebalance_plan_view(request):
             return Response(
                 {
                     "status": "error",
-                    "message": str(e),
+                    "message": "Rebalance operation failed",
                     "error_code": e.error_code,
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -690,7 +690,7 @@ def rebalance_execute_view(request):
             return Response(
                 {
                     "status": "error",
-                    "message": str(e),
+                    "message": "Rebalance operation failed",
                     "error_code": e.error_code,
                 },
                 status=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -702,7 +702,7 @@ def rebalance_execute_view(request):
             return Response(
                 {
                     "status": "error",
-                    "message": str(e),
+                    "message": "Rebalance operation failed",
                     "error_code": e.error_code,
                 },
                 status=status.HTTP_409_CONFLICT,
@@ -711,7 +711,7 @@ def rebalance_execute_view(request):
             return Response(
                 {
                     "status": "error",
-                    "message": str(e),
+                    "message": "Rebalance operation failed",
                     "error_code": e.error_code,
                     "retry_after_seconds": 5,  # Suggest retry after cooldown
                 },
@@ -721,7 +721,7 @@ def rebalance_execute_view(request):
             return Response(
                 {
                     "status": "error",
-                    "message": str(e),
+                    "message": "Rebalance operation failed",
                     "error_code": e.error_code,
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,

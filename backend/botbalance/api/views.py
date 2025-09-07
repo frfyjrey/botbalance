@@ -1080,7 +1080,7 @@ def create_portfolio_snapshot_view(request):
             return Response(
                 {
                     "status": "error",
-                    "message": str(e),
+                    "message": "Portfolio state not available",
                     "error_code": e.error_code,
                     "suggestion": "Refresh portfolio state first using POST /api/me/portfolio/state/refresh/",
                 },
@@ -1483,7 +1483,6 @@ def cancel_order_view(request, order_id: int):
                         "status": "error",
                         "message": f"Order cancellation not supported on {order.exchange}",
                         "error_code": "FEATURE_NOT_SUPPORTED",
-                        "details": str(cancel_error),
                     },
                     status=status.HTTP_501_NOT_IMPLEMENTED,
                 )
@@ -1603,7 +1602,7 @@ def exchange_accounts_view(request):
                         "message": "Validation failed",
                         "errors": e.message_dict
                         if hasattr(e, "message_dict")
-                        else str(e),
+                        else {"non_field_errors": ["Invalid input data"]},
                     },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
@@ -1616,6 +1615,12 @@ def exchange_accounts_view(request):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+    # This should not be reached due to @api_view decorator, but added for completeness
+    return Response(
+        {"status": "error", "message": "Method not allowed"},
+        status=status.HTTP_405_METHOD_NOT_ALLOWED,
+    )
 
 
 @api_view(["GET", "PUT", "DELETE"])
@@ -1667,7 +1672,7 @@ def exchange_account_detail_view(request, account_id):
                         "message": "Validation failed",
                         "errors": e.message_dict
                         if hasattr(e, "message_dict")
-                        else str(e),
+                        else {"non_field_errors": ["Invalid input data"]},
                     },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
@@ -1690,6 +1695,12 @@ def exchange_account_detail_view(request, account_id):
                 "message": f"Exchange account '{account_name}' deleted successfully",
             }
         )
+
+    # This should not be reached due to @api_view decorator, but added for completeness
+    return Response(
+        {"status": "error", "message": "Method not allowed"},
+        status=status.HTTP_405_METHOD_NOT_ALLOWED,
+    )
 
 
 @api_view(["POST"])
@@ -1786,9 +1797,6 @@ def check_exchange_account_view(request, account_id):
                 else:
                     status_result = "down"
                     await sync_to_async(account.update_health_error)("NETWORK_ERROR")
-            else:
-                status_result = "down"
-                await sync_to_async(account.update_health_error)("DOWN")
 
             return {
                 "status": status_result,
@@ -1842,7 +1850,7 @@ def check_exchange_account_view(request, account_id):
         import logging
 
         logger = logging.getLogger(__name__)
-        logger.error(f"Health check timeout for account {account_id}")
+        logger.error("Health check timeout for account %s", account_id)
 
         account.update_health_error("TIMEOUT")
         return Response(
@@ -1857,13 +1865,13 @@ def check_exchange_account_view(request, account_id):
         import logging
 
         logger = logging.getLogger(__name__)
-        logger.error(f"Health check failed for account {account_id}: {e}")
+        logger.error("Health check failed for account %s: %s", account_id, str(e))
 
         account.update_health_error("CHECK_FAILED")
         return Response(
             {
                 "status": "error",
-                "message": f"Health check failed: {str(e)}",
+                "message": "Health check failed",
                 "connector_id": account.id,
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,

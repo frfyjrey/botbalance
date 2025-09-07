@@ -418,10 +418,10 @@ class RebalanceService:
                             normalized_order_volume, 8
                         )
                         # Keep full precision for quote amount (don't round to 2 decimals)
-                        order_amount_normalized = order_amount_normalized
+                        # order_amount_normalized already has the correct value
 
                     except Exception as e:
-                        logger.error(f"Normalization failed for {asset}: {e}")
+                        logger.error("Normalization failed for %s: %s", asset, str(e))
                         # If normalization fails, keep pre-normalized values
                         normalized_order_price = order_price
                         normalized_order_volume = order_volume
