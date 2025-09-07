@@ -225,9 +225,11 @@ def _create_or_update_strategy(request):
                 if hasattr(e, "message_dict"):
                     errors = e.message_dict
                 elif hasattr(e, "messages"):
-                    error_message = "; ".join(e.messages)
+                    error_message = "Validation failed: multiple errors"
                 else:
-                    error_message = str(e)
+                    # Log the exception and avoid exposing details to user
+                    logger.error("Strategy validation exception: %s", e, exc_info=True)
+                    error_message = "Validation failed. Please check your input."
 
                 return Response(
                     {
