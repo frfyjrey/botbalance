@@ -49,6 +49,7 @@ export const StrategyForm: React.FC<StrategyFormProps> = ({
     switch_cancel_buffer_pct: DEFAULT_STRATEGY_VALUES.switch_cancel_buffer_pct,
     quote_asset: DEFAULT_STRATEGY_VALUES.quote_asset,
     exchange_account: DEFAULT_STRATEGY_VALUES.exchange_account,
+    auto_trade_enabled: DEFAULT_STRATEGY_VALUES.auto_trade_enabled,
     allocations: [
       // Automatically include base currency with default 20%
       {
@@ -77,6 +78,7 @@ export const StrategyForm: React.FC<StrategyFormProps> = ({
         switch_cancel_buffer_pct: parseFloat(strategy.switch_cancel_buffer_pct),
         quote_asset: strategy.quote_asset,
         exchange_account: strategy.exchange_account,
+        auto_trade_enabled: strategy.auto_trade_enabled,
         allocations: strategy.allocations.map(alloc => ({
           asset: alloc.asset,
           target_percentage: parseFloat(alloc.target_percentage),
@@ -93,9 +95,9 @@ export const StrategyForm: React.FC<StrategyFormProps> = ({
       newErrors.name = t('common:validation.required');
     }
 
-    if (formData.order_size_pct <= 0 || formData.order_size_pct > 100) {
+    if (formData.order_size_pct < 0.1 || formData.order_size_pct > 100) {
       newErrors.order_size_pct = t('common:validation.percentage_range', {
-        min: 1,
+        min: 0.1,
         max: 100,
       });
     }
@@ -327,6 +329,7 @@ export const StrategyForm: React.FC<StrategyFormProps> = ({
         switch_cancel_buffer_pct: formData.switch_cancel_buffer_pct.toString(),
         quote_asset: formData.quote_asset,
         exchange_account: formData.exchange_account,
+        auto_trade_enabled: formData.auto_trade_enabled,
         allocations: allocationsToSend.map(alloc => ({
           asset: alloc.asset.toUpperCase(),
           target_percentage: alloc.target_percentage.toString(),
@@ -429,6 +432,20 @@ export const StrategyForm: React.FC<StrategyFormProps> = ({
                 }`}
               >
                 {strategyResponse.strategy.is_active ? 'Active' : 'Inactive'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span style={{ color: 'rgb(var(--fg-muted))' }}>Auto Trade:</span>
+              <span
+                className={`px-2 py-1 rounded text-xs font-medium ${
+                  strategyResponse.strategy.auto_trade_enabled
+                    ? 'bg-blue-100 text-blue-800'
+                    : 'bg-gray-100 text-gray-800'
+                }`}
+              >
+                {strategyResponse.strategy.auto_trade_enabled
+                  ? 'Enabled'
+                  : 'Disabled'}
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -557,7 +574,7 @@ export const StrategyForm: React.FC<StrategyFormProps> = ({
           <Input
             id="order-size"
             type="number"
-            min="1"
+            min="0.1"
             max="100"
             step="0.1"
             value={formData.order_size_pct}
@@ -662,6 +679,43 @@ export const StrategyForm: React.FC<StrategyFormProps> = ({
           <p className="text-xs" style={{ color: 'rgb(var(--fg-muted))' }}>
             Cancel on side change only if market moved by X% from order price
           </p>
+        </div>
+
+        {/* Auto Trade Toggle */}
+        <div className="space-y-2">
+          <div className="flex items-center space-x-3">
+            <input
+              type="checkbox"
+              id="auto-trade-enabled"
+              checked={formData.auto_trade_enabled}
+              onChange={e =>
+                handleFieldChange('auto_trade_enabled', e.target.checked)
+              }
+              className="w-4 h-4 rounded border"
+              style={{
+                borderColor: 'rgb(var(--border))',
+                backgroundColor: 'rgb(var(--canvas-default))',
+              }}
+              disabled={isLoading}
+            />
+            <Label htmlFor="auto-trade-enabled" className="font-medium">
+              Enable Auto Trading
+            </Label>
+          </div>
+          <p className="text-xs ml-7" style={{ color: 'rgb(var(--fg-muted))' }}>
+            When enabled, the strategy will automatically execute rebalancing
+            orders every 30 seconds. Requires ENABLE_AUTO_TRADE=true in
+            environment settings.
+          </p>
+          {formData.auto_trade_enabled && (
+            <div className="ml-7 p-2 rounded border-l-4 border-orange-400 bg-orange-50">
+              <p className="text-xs text-orange-700">
+                ⚠️ <strong>Warning:</strong> Auto-trading will place real orders
+                on the exchange. Make sure your strategy parameters are correct
+                and test thoroughly.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Asset Allocations */}

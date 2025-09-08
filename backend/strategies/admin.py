@@ -70,8 +70,9 @@ class StrategyAdmin(admin.ModelAdmin):
             color = "orange"
         else:
             color = "red"
+        formatted_total = f"{float(total):.1f}"
         return format_html(
-            '<span style="color: {};">{:.1f}%</span>', color, float(total)
+            '<span style="color: {};">{}%</span>', color, formatted_total
         )
 
     @admin.display(description="Assets")
@@ -287,7 +288,8 @@ class OrderAdmin(admin.ModelAdmin):
             color = "orange"
         else:
             color = "green"
-        return format_html('<span style="color: {};">{:.1f}%</span>', color, float(pct))
+        formatted_pct = f"{float(pct):.1f}"
+        return format_html('<span style="color: {};">{}%</span>', color, formatted_pct)
 
 
 # Add Strategy inlines

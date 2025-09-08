@@ -200,6 +200,13 @@ CELERY_BEAT_SCHEDULE = {
             "expires": 25
         },  # Task expires in 25 seconds to prevent accumulation
     },
+    "strategy-tick": {
+        "task": "botbalance.tasks.tasks.strategy_tick_task",
+        "schedule": 30.0,  # Every 30 seconds
+        "options": {
+            "expires": 25
+        },  # Task expires in 25 seconds to prevent accumulation
+    },
 }
 
 # =============================================================================
@@ -322,3 +329,11 @@ SIMPLE_JWT = {
 SESSION_COOKIE_AGE = 7200  # 2 часа в секундах
 SESSION_SAVE_EVERY_REQUEST = True  # Обновлять сессию при каждом запросе
 SESSION_EXPIRE_AT_BROWSER_CLOSE = False  # Не истекать при закрытии браузера
+
+
+# =============================================================================
+# AUTO TRADE SETTINGS
+# =============================================================================
+
+# Global flag to enable automatic trading (Step 6) - disabled by default in production
+ENABLE_AUTO_TRADE = os.getenv("ENABLE_AUTO_TRADE", "false").lower() == "true"

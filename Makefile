@@ -70,8 +70,8 @@ backend-dev: ## Start Django development server
 		DJANGO_SETTINGS_MODULE=$(BACKEND_APP).settings.local \
 		uv run python manage.py runserver 0.0.0.0:8000
 
-# Общие переменные для polling в dev среде
-POLL_ENV = DJANGO_SETTINGS_MODULE=$(BACKEND_APP).settings.local EXCHANGE_ENV=live ENABLE_ORDER_POLLING=true
+# Общие переменные для polling и auto-trade в dev среде
+POLL_ENV = DJANGO_SETTINGS_MODULE=$(BACKEND_APP).settings.local EXCHANGE_ENV=live ENABLE_ORDER_POLLING=true ENABLE_AUTO_TRADE=true
 
 .PHONY: worker
 worker: ## Start Celery worker
