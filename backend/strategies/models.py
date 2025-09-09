@@ -49,10 +49,10 @@ class Strategy(models.Model):
         decimal_places=2,
         default=Decimal("10.00"),
         validators=[
-            MinValueValidator(Decimal("1.00")),
+            MinValueValidator(Decimal("0.10")),
             MaxValueValidator(Decimal("100.00")),
         ],
-        help_text="Order size as percentage of NAV (1.00-100.00%)",
+        help_text="Order size as percentage of NAV (0.10-100.00%)",
     )
 
     min_delta_pct = models.DecimalField(
@@ -109,6 +109,11 @@ class Strategy(models.Model):
         help_text="Whether this strategy is active and should be executed",
     )
 
+    auto_trade_enabled = models.BooleanField(
+        default=False,
+        help_text="Enable automatic trading for this strategy",
+    )
+
     # Metadata
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -140,9 +145,9 @@ class Strategy(models.Model):
         super().clean()
 
         # Validate order_size_pct
-        if self.order_size_pct <= 0 or self.order_size_pct > 100:
+        if self.order_size_pct < Decimal("0.10") or self.order_size_pct > 100:
             raise ValidationError(
-                {"order_size_pct": "Order size must be between 1.00% and 100.00%"}
+                {"order_size_pct": "Order size must be between 0.10% and 100.00%"}
             )
 
         # Validate min_delta_pct

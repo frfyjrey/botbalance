@@ -20,6 +20,7 @@ export interface Strategy {
   quote_asset: string;
   exchange_account: number;
   is_active: boolean;
+  auto_trade_enabled: boolean;
   allocations: StrategyAllocation[];
   total_allocation: string;
   is_allocation_valid: boolean;
@@ -123,6 +124,7 @@ export interface StrategyCreateRequest {
   switch_cancel_buffer_pct?: string;
   quote_asset?: string;
   exchange_account?: number | null;
+  auto_trade_enabled?: boolean;
   allocations: Omit<StrategyAllocation, 'id' | 'created_at' | 'updated_at'>[];
 }
 
@@ -135,6 +137,7 @@ export interface StrategyUpdateRequest {
   quote_asset?: string;
   exchange_account?: number | null;
   is_active?: boolean;
+  auto_trade_enabled?: boolean;
   allocations?: Omit<StrategyAllocation, 'id' | 'created_at' | 'updated_at'>[];
 }
 
@@ -151,6 +154,7 @@ export interface StrategyFormData {
   switch_cancel_buffer_pct: number;
   quote_asset: string;
   exchange_account: number | null;
+  auto_trade_enabled: boolean;
   allocations: {
     asset: string;
     target_percentage: number;
@@ -192,6 +196,7 @@ export const DEFAULT_STRATEGY_VALUES = {
   switch_cancel_buffer_pct: 0.15,
   quote_asset: 'USDT',
   exchange_account: null,
+  auto_trade_enabled: false,
 } as const;
 
 // Note: Asset constants are now loaded from the backend via useStrategyConstants()

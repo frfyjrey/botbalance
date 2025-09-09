@@ -167,7 +167,7 @@ class PriceService:
         return results
 
     async def get_prices_batch_with_adapter(
-        self, adapter, symbols: list[str]
+        self, adapter, symbols: list[str], force_refresh: bool = False
     ) -> dict[str, Decimal | None]:
         """
         Get prices for multiple symbols using specific exchange adapter.
@@ -179,6 +179,7 @@ class PriceService:
         Args:
             adapter: Exchange adapter instance
             symbols: List of trading pair symbols
+            force_refresh: Force refresh prices from exchange (ignores cache)
 
         Returns:
             Dictionary mapping symbols to prices

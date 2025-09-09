@@ -82,6 +82,7 @@ class StrategySerializer(serializers.ModelSerializer):
             "quote_asset",
             "exchange_account",
             "is_active",
+            "auto_trade_enabled",
             "allocations",
             "total_allocation",
             "is_allocation_valid",
@@ -109,8 +110,8 @@ class StrategySerializer(serializers.ModelSerializer):
 
     def validate_order_size_pct(self, value: Decimal) -> Decimal:
         """Validate order size percentage."""
-        if value <= 0 or value > 100:
-            raise ValidationError("Order size must be between 1.00% and 100.00%")
+        if value < Decimal("0.10") or value > 100:
+            raise ValidationError("Order size must be between 0.10% and 100.00%")
         return value
 
     def validate_min_delta_pct(self, value: Decimal) -> Decimal:
@@ -300,7 +301,7 @@ class StrategyCreateRequestSerializer(serializers.Serializer):
         max_digits=5,
         decimal_places=2,
         default=Decimal("10.00"),
-        min_value=Decimal("1.00"),
+        min_value=Decimal("0.10"),
         max_value=Decimal("100.00"),
     )
     min_delta_pct = serializers.DecimalField(
@@ -377,7 +378,7 @@ class StrategyUpdateRequestSerializer(serializers.Serializer):
     order_size_pct = serializers.DecimalField(
         max_digits=5,
         decimal_places=2,
-        min_value=Decimal("1.00"),
+        min_value=Decimal("0.10"),
         max_value=Decimal("100.00"),
         required=False,
     )
@@ -403,6 +404,7 @@ class StrategyUpdateRequestSerializer(serializers.Serializer):
         required=False,
     )
     is_active = serializers.BooleanField(required=False)
+    auto_trade_enabled = serializers.BooleanField(required=False)
     allocations = StrategyAllocationSerializer(many=True, required=False)
 
     def validate_allocations(self, value: list[dict[str, Any]]) -> list[dict[str, Any]]:

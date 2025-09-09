@@ -219,7 +219,10 @@ export const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
     );
   }
 
-  const assets = response.portfolio.assets;
+  // Sort assets by USD value (highest first)
+  const assets = [...response.portfolio.assets].sort(
+    (a, b) => parseFloat(b.value_usd) - parseFloat(a.value_usd),
+  );
 
   if (assets.length === 0) {
     return (
@@ -308,7 +311,7 @@ export const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
 
           {/* Legend */}
           <div className="flex-1 min-w-0">
-            <div className="space-y-3 max-h-64 overflow-y-auto">
+            <div className="space-y-3">
               {assets.map((asset, index) => (
                 <div key={asset.symbol} className="flex items-center gap-3">
                   <div

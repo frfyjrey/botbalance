@@ -81,3 +81,28 @@ export function formatZeroAware(value: string | number): string {
   if (Number.isFinite(n) && n === 0) return '0';
   return String(value);
 }
+
+/**
+ * Smart price formatting for crypto prices
+ * - Very small prices (< $0.001): show 3 significant digits (e.g. $0.0000567)
+ * - Small prices (< $1): show 4 decimal places (e.g. $0.8374)
+ * - Regular prices (>= $1): show 2 decimal places (e.g. $111.00)
+ */
+export function formatSmartPrice(price: string | number): string {
+  const num = typeof price === 'number' ? price : parseFloat(price);
+
+  if (isNaN(num)) return 'N/A';
+
+  // Very small prices (< $0.001) - show up to 3 significant digits
+  if (num < 0.001) {
+    return `$${num.toPrecision(3)}`;
+  }
+
+  // Small prices (< $1) - 4 decimal places
+  if (num < 1) {
+    return `$${num.toFixed(4)}`;
+  }
+
+  // Regular prices (>= $1) - 2 decimal places
+  return `$${num.toFixed(2)}`;
+}

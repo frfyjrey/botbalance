@@ -170,10 +170,7 @@ BINANCE_SPOT_TESTNET_API_SECRET = os.getenv("BINANCE_SPOT_TESTNET_API_SECRET", "
 # Order polling (Step 5): disabled by default; enable together with EXCHANGE_ENV=live
 ENABLE_ORDER_POLLING = os.getenv("ENABLE_ORDER_POLLING", "false").lower() == "true"
 
-# Binance testnet active symbols allowlist (CSV)
-BINANCE_TESTNET_ACTIVE_SYMBOLS = os.getenv(
-    "BINANCE_TESTNET_ACTIVE_SYMBOLS", "BTCUSDT,ETHUSDT,BNBUSDT"
-)
+# Note: Symbol restrictions removed - strategy universe controls allowed symbols
 
 # =============================================================================
 # DJANGO REST FRAMEWORK
@@ -257,6 +254,13 @@ CELERY_BEAT_SCHEDULE = {
             "expires": 25
         },  # Task expires in 25 seconds to prevent accumulation
     },
+    "strategy-tick": {
+        "task": "botbalance.tasks.tasks.strategy_tick_task",
+        "schedule": 30.0,  # Every 30 seconds
+        "options": {
+            "expires": 25
+        },  # Task expires in 25 seconds to prevent accumulation
+    },
 }
 
 
@@ -307,3 +311,11 @@ LOGGING = {
 
 # Time window in seconds for considering a connector healthy
 CONNECTOR_HEALTH_WINDOW_SEC = int(os.getenv("CONNECTOR_HEALTH_WINDOW_SEC", "60"))
+
+
+# =============================================================================
+# AUTO TRADE SETTINGS
+# =============================================================================
+
+# Global flag to enable automatic trading (Step 6)
+ENABLE_AUTO_TRADE = os.getenv("ENABLE_AUTO_TRADE", "false").lower() == "true"

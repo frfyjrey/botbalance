@@ -65,6 +65,27 @@ export const QUERY_KEYS = {
   EXCHANGE_ACCOUNTS: 'exchange-accounts',
 } as const;
 
+// Helper functions for complex query keys
+export const QUERY_KEY_FACTORIES = {
+  orders: (filters?: {
+    status?: string;
+    symbol?: string;
+    side?: string;
+    exchange?: string;
+  }) => {
+    const base = [QUERY_KEYS.ORDERS];
+    if (!filters) return base;
+
+    return [
+      ...base,
+      filters.status || '',
+      filters.symbol || '',
+      filters.side || '',
+      filters.exchange || '',
+    ].filter(Boolean);
+  },
+} as const;
+
 // Theme
 export const THEME = {
   LIGHT: 'light',

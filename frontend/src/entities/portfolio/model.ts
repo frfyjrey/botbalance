@@ -157,7 +157,18 @@ export const portfolioStateToSummary = (
 
       // Get price from state.prices
       let price_usd: string | null = null;
-      if (symbol !== state.quote_asset && state.prices) {
+
+      // For quote asset (usually USDT), price is 1.00
+      if (symbol === state.quote_asset) {
+        price_usd = '1.00';
+      }
+      // For other assets, calculate price from value/balance
+      else if (parseFloat(balance) > 0) {
+        const calculatedPrice = parseFloat(value_usd) / parseFloat(balance);
+        price_usd = calculatedPrice.toString();
+      }
+      // Fallback: try to get from state.prices
+      else if (state.prices) {
         const priceSymbol = `${symbol}${state.quote_asset}`;
         if (state.prices[priceSymbol]) {
           price_usd = state.prices[priceSymbol];
