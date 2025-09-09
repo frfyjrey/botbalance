@@ -943,8 +943,6 @@ async def _process_asset_tick(
             strategy, account, action, adapter, tick_start_time
         )
 
-    return False
-
 
 def _should_switch_order(existing_order, action, strategy):
     """
