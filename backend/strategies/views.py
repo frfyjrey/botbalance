@@ -8,6 +8,7 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -425,10 +426,54 @@ def rebalance_plan_view(request):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Calculate rebalance plan
+        # Calculate rebalance plan (with optimization for existing state)
         force_refresh = (
             request.query_params.get("force_refresh", "false").lower() == "true"
         )
+
+        portfolio_state_to_use = None
+        state_age_sec = None
+        used_state_source = None
+
+        # Try to reuse existing state (even with force_refresh if cooldown is active)
+        from botbalance.exchanges.portfolio_service import portfolio_service
+
+        existing_state = asyncio.run(
+            portfolio_service.get_latest_portfolio_state(exchange_account)
+        )
+
+        # Determine if we should use existing state
+        should_use_existing = False
+
+        if (
+            not force_refresh
+            and existing_state
+            and portfolio_service.is_state_fresh(existing_state, threshold_sec=10)
+        ):
+            # Normal case: use fresh existing state
+            should_use_existing = True
+        elif force_refresh and existing_state:
+            # force_refresh=true, but check if cooldown would block new state creation
+            from django.conf import settings
+            from django.core.cache import cache
+
+            cooldown_seconds = getattr(settings, "PORTFOLIO_STATE_COOLDOWN_SEC", 5)
+            cooldown_key = f"portfolio_state_cooldown_{exchange_account.id}"
+
+            if cache.get(cooldown_key):
+                # Cooldown is active - use existing state instead of failing
+                should_use_existing = True
+                logger.warning(
+                    "force_refresh requested but cooldown active, using existing state instead"
+                )
+
+        if should_use_existing and existing_state is not None:
+            portfolio_state_to_use = existing_state
+            state_age_sec = (timezone.now() - existing_state.ts).total_seconds()
+            used_state_source = existing_state.source
+            logger.info(
+                f"Using existing state (age: {state_age_sec:.1f}s, source: {used_state_source}, force_refresh: {force_refresh})"
+            )
 
         try:
             logger.info(
@@ -436,7 +481,10 @@ def rebalance_plan_view(request):
             )
             plan = asyncio.run(
                 rebalance_service.calculate_rebalance_plan(
-                    strategy, exchange_account, force_refresh
+                    strategy,
+                    exchange_account,
+                    portfolio_state=portfolio_state_to_use,
+                    force_refresh_prices=force_refresh,
                 )
             )
             logger.info("Successfully calculated rebalance plan")
@@ -461,15 +509,24 @@ def rebalance_plan_view(request):
                 status=status.HTTP_409_CONFLICT,
             )
         except RateLimitExceededError as e:
-            return Response(
-                {
-                    "status": "error",
-                    "message": "Rebalance operation failed",
-                    "error_code": e.error_code,
-                    "retry_after_seconds": 5,  # Suggest retry after cooldown
-                },
-                status=status.HTTP_429_TOO_MANY_REQUESTS,
-            )
+            # Calculate dynamic retry time based on cooldown
+            from django.conf import settings
+
+            cooldown_seconds = getattr(settings, "PORTFOLIO_STATE_COOLDOWN_SEC", 5)
+            retry_in_sec = cooldown_seconds + 1  # Add 1 second buffer
+
+            response_data = {
+                "status": "error",
+                "message": "Auto-trade just refreshed. Try again shortly.",
+                "error_code": e.error_code,
+                "retry_in_sec": retry_in_sec,
+            }
+
+            # Add state metadata if we have it
+            if state_age_sec is not None:
+                response_data["state_age_sec"] = round(state_age_sec, 1)
+
+            return Response(response_data, status=status.HTTP_429_TOO_MANY_REQUESTS)
         except RebalanceError as e:
             return Response(
                 {
@@ -538,12 +595,26 @@ def rebalance_plan_view(request):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-        return Response(
-            {
-                "status": "success",
-                "plan": serializer.data,
-            }
-        )
+        # Build response with metadata about portfolio state usage
+        response_data = {
+            "status": "success",
+            "plan": serializer.data,
+        }
+
+        # Add state metadata
+        if state_age_sec is not None and used_state_source is not None:
+            response_data["state_age_sec"] = round(state_age_sec, 1)
+            response_data["used_state_source"] = used_state_source
+            if force_refresh:
+                response_data["note"] = (
+                    "force_refresh_blocked_by_cooldown_used_existing_state"
+                )
+            else:
+                response_data["note"] = "plan_built_on_existing_state"
+        else:
+            response_data["note"] = "plan_built_on_fresh_state"
+
+        return Response(response_data)
 
     except Exception as e:
         logger.error(f"Error calculating rebalance plan: {e}", exc_info=True)
@@ -687,7 +758,10 @@ def rebalance_execute_view(request):
         try:
             rebalance_plan = asyncio.run(
                 rebalance_service.calculate_rebalance_plan(
-                    strategy, exchange_account, force_refresh_prices
+                    strategy,
+                    exchange_account,
+                    portfolio_state=None,
+                    force_refresh_prices=force_refresh_prices,
                 )
             )
         except NoPricingDataError as e:
@@ -840,7 +914,9 @@ def rebalance_execute_view(request):
                     status="submitted",  # Mark as submitted since exchange accepted it
                     limit_price=exchange_order["limit_price"],
                     quote_amount=exchange_order["quote_amount"],
-                    filled_amount=exchange_order["filled_amount"],
+                    filled_amount=Decimal(
+                        "0"
+                    ),  # Always 0 at creation - poller will update
                     submitted_at=timezone.now(),
                     exchange_data=prepare_exchange_data_for_json(
                         dict(exchange_order)

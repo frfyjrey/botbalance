@@ -118,6 +118,58 @@ def long_running_task(self, duration: int = 10) -> dict[str, Any]:
     return result
 
 
+def _calculate_filled_quote_amount(exch_order: dict, max_quote_amount=None):
+    """
+    Calculate filled amount in quote currency (USDT) from exchange order data.
+
+    Args:
+        exch_order: Exchange order response
+        max_quote_amount: Maximum quote amount to clamp result (order's quote_amount)
+
+    Returns:
+        Filled amount in quote currency (USDT) or None if cannot calculate
+    """
+    from decimal import Decimal
+
+    # CORRECTED: Try cummulativeQuoteQty first (this is the actual filled amount)
+    cum_quote = exch_order.get("cummulativeQuoteQty")
+    if cum_quote is not None:
+        try:
+            filled_quote = Decimal(str(cum_quote))
+            # Round to 8 decimal places to match Django model validation
+            filled_quote = filled_quote.quantize(Decimal("0.00000001"))
+            # Clamp to [0, max_quote_amount] if provided
+            if max_quote_amount is not None:
+                filled_quote = min(max(filled_quote, Decimal("0")), max_quote_amount)
+            return filled_quote
+        except (ValueError, TypeError):
+            pass
+
+    # Fallback: calculate from avgPrice * executedQty
+    try:
+        avg_price = exch_order.get("avgPrice") or exch_order.get("price", 0)
+        executed_qty = exch_order.get("executedQty") or exch_order.get(
+            "filled_amount", 0
+        )
+
+        if avg_price and executed_qty:
+            filled_quote = Decimal(str(avg_price)) * Decimal(str(executed_qty))
+            # Round to 8 decimal places to match Django model validation
+            filled_quote = filled_quote.quantize(Decimal("0.00000001"))
+            # Clamp to [0, max_quote_amount] if provided
+            if max_quote_amount is not None:
+                filled_quote = min(max(filled_quote, Decimal("0")), max_quote_amount)
+            logger.debug(
+                f"Calculated filled_quote: {avg_price} * {executed_qty} = {filled_quote}"
+            )
+            return filled_quote
+
+    except (ValueError, TypeError, KeyError) as e:
+        logger.warning(f"Cannot calculate filled quote amount from exchange data: {e}")
+
+    return Decimal("0")  # Return 0 instead of None as safe fallback
+
+
 @shared_task(bind=True, soft_time_limit=15, time_limit=20)
 def poll_orders_task(self) -> dict[str, Any]:
     """
@@ -127,10 +179,13 @@ def poll_orders_task(self) -> dict[str, Any]:
     - Runs only when both EXCHANGE_ENV=live and ENABLE_ORDER_POLLING are True.
     - Uses get_open_orders per-user to minimize rate-limit, with fallback get_order_status.
     """
+    from decimal import Decimal
+
     from django.conf import settings
 
     from botbalance.exchanges.models import ExchangeAccount
     from strategies.models import Order
+    from strategies.views import prepare_exchange_data_for_json
 
     if getattr(settings, "EXCHANGE_ENV", "mock") == "mock" or not getattr(
         settings, "ENABLE_ORDER_POLLING", False
@@ -178,41 +233,239 @@ def poll_orders_task(self) -> dict[str, Any]:
 
                     if not exch_order:
                         # Fallback: query direct status if absent from openOrders
+                        # This happens when order is FILLED/CANCELLED and no longer in openOrders
                         try:
-                            exch_order = asyncio.run(
-                                adapter.get_order_status(ex_id or cid)
+                            # Pass exactly one ID - prefer exchange order_id over client_order_id
+                            if ex_id:
+                                exch_order = asyncio.run(
+                                    adapter.get_order_status(
+                                        symbol=ord_obj.symbol,
+                                        order_id=ex_id,
+                                    )
+                                )
+                            elif cid:
+                                exch_order = asyncio.run(
+                                    adapter.get_order_status(
+                                        symbol=ord_obj.symbol,
+                                        client_order_id=cid,
+                                    )
+                                )
+                            else:
+                                logger.warning(
+                                    f"No order_id or client_order_id for order {ord_obj.id}"
+                                )
+                                continue
+                            logger.info(
+                                f"Retrieved disappeared order status: {ord_obj.symbol} "
+                                f"order_id={ex_id}, client_id={cid}, status={exch_order.get('status')}"
                             )
-                        except Exception:
-                            # If still not found — assume it might be filled/cancelled
-                            # Next iteration will reconcile; skip for now
-                            continue
+                        except Exception as e:
+                            error_msg = str(e).lower()
+                            # Handle specific exchange errors
+                            if "-2011" in error_msg or "already closed" in error_msg:
+                                # Order already cancelled on exchange
+                                ord_obj.mark_cancelled()
+                                logger.info(
+                                    f"Order auto-cancelled (exchange): {ord_obj.symbol} order_id={ex_id}"
+                                )
+                                updated += 1
+                                continue
+                            elif "-2013" in error_msg or "does not exist" in error_msg:
+                                # Order not found - possibly long-closed, will retry next tick
+                                logger.warning(
+                                    f"Order not found on exchange: {ord_obj.symbol} order_id={ex_id}, "
+                                    f"client_id={cid} - will retry next tick"
+                                )
+                                continue
+                            else:
+                                logger.warning(
+                                    f"Failed to get disappeared order status for {ord_obj.symbol} "
+                                    f"order_id={ex_id}, client_id={cid}: {e}"
+                                )
+                                continue
 
-                    # Map status to our model
-                    status = exch_order["status"].lower()
-                    if status == "open":
-                        # Update fill progress only
-                        new_filled = exch_order.get("filled_amount")
-                        if new_filled is not None and str(new_filled) != str(
+                    # Map status to our model with consistency logic
+                    binance_status = exch_order[
+                        "status"
+                    ].upper()  # Use original status from Binance
+                    filled_quote = _calculate_filled_quote_amount(
+                        exch_order, ord_obj.quote_amount
+                    )
+
+                    # Status consistency logic according to user's safe plan:
+                    if binance_status in ["NEW", "OPEN"]:
+                        # NEW = just created, should be 0
+                        # OPEN = active on exchange, may be partially filled - use calculated value!
+                        need_update = False
+                        update_fields = []
+
+                        if binance_status == "NEW" and ord_obj.filled_amount != Decimal(
+                            "0"
+                        ):
+                            # Only reset to 0 for NEW orders (just created)
+                            ord_obj.filled_amount = Decimal("0")
+                            update_fields.extend(["filled_amount", "updated_at"])
+                            need_update = True
+                            logger.info(
+                                f"Order NEW: {ord_obj.symbol} order_id={ex_id} - reset filled_amount to 0"
+                            )
+                        elif binance_status == "OPEN" and str(filled_quote) != str(
                             ord_obj.filled_amount
                         ):
-                            ord_obj.filled_amount = new_filled
-                            ord_obj.save(update_fields=["filled_amount", "updated_at"])
+                            # For OPEN orders, update with calculated filled_amount (may be partial)
+                            # BUT: Don't decrease from existing partial fill to 0 (testnet bug protection)
+                            old_filled = ord_obj.filled_amount
+
+                            if filled_quote == Decimal(
+                                "0"
+                            ) and ord_obj.filled_amount > Decimal("0"):
+                                # Testnet bug: /api/v3/order returns cummulativeQuoteQty=0 for OPEN orders
+                                # Keep existing filled_amount to preserve partial fills
+                                logger.info(
+                                    f"Order OPEN: {ord_obj.symbol} order_id={ex_id} - preserving existing filled_amount {old_filled} (testnet protection)"
+                                )
+                            elif filled_quote > ord_obj.filled_amount:
+                                # Only increase filled_amount (monotonic)
+                                ord_obj.filled_amount = filled_quote
+                                update_fields.extend(["filled_amount", "updated_at"])
+                                need_update = True
+                                fill_pct = (
+                                    (
+                                        float(filled_quote)
+                                        / float(ord_obj.quote_amount)
+                                        * 100
+                                    )
+                                    if ord_obj.quote_amount > 0
+                                    else 0
+                                )
+                                logger.info(
+                                    f"Order OPEN: {ord_obj.symbol} order_id={ex_id} - increased filled_amount: {old_filled} -> {filled_quote} ({fill_pct:.2f}%)"
+                                )
+
+                        # Update status to 'open' if currently 'submitted' and binance says OPEN
+                        if binance_status == "OPEN" and ord_obj.status == "submitted":
+                            ord_obj.status = "open"
+                            update_fields.extend(["status", "updated_at"])
+                            need_update = True
+                            logger.info(
+                                f"Order status updated: {ord_obj.symbol} order_id={ex_id} submitted -> open"
+                            )
+
+                        # Always save exchange_data for diagnostics
+                        ord_obj.exchange_data = prepare_exchange_data_for_json(
+                            exch_order
+                        )
+                        update_fields.append("exchange_data")
+                        need_update = True
+
+                        if need_update:
+                            ord_obj.save(
+                                update_fields=list(set(update_fields))
+                            )  # Remove duplicates
                             updated += 1
-                    elif status == "filled":
-                        ord_obj.mark_filled(
-                            filled_amount=exch_order.get("filled_amount")
+
+                    elif binance_status == "PARTIALLY_FILLED":
+                        # Update fill progress - filled_quote should be > 0 and < quote_amount
+                        need_update = False
+                        update_fields = ["exchange_data"]  # Always save exchange_data
+                        ord_obj.exchange_data = prepare_exchange_data_for_json(
+                            exch_order
+                        )
+
+                        if (
+                            filled_quote > Decimal("0")
+                            and filled_quote < ord_obj.quote_amount
+                        ):
+                            if str(filled_quote) != str(ord_obj.filled_amount):
+                                old_filled = ord_obj.filled_amount
+                                ord_obj.filled_amount = filled_quote
+                                update_fields.extend(["filled_amount", "updated_at"])
+                                need_update = True
+                                logger.info(
+                                    f"Order PARTIALLY_FILLED: {ord_obj.symbol} order_id={ex_id} "
+                                    f"filled_quote: {old_filled} -> {filled_quote}"
+                                )
+
+                        if need_update or update_fields:
+                            ord_obj.save(update_fields=list(set(update_fields)))
+                            updated += 1
+                        else:
+                            # Safety guard: inconsistent data from testnet
+                            logger.warning(
+                                f"Order PARTIALLY_FILLED but invalid filled_quote={filled_quote} "
+                                f"(should be >0 and <{ord_obj.quote_amount}): {ord_obj.symbol} order_id={ex_id}"
+                            )
+
+                    elif binance_status == "FILLED":
+                        # Order completely filled - filled_amount = quote_amount (full execution)
+                        # Save exchange_data first for diagnostics
+                        ord_obj.exchange_data = prepare_exchange_data_for_json(
+                            exch_order
+                        )
+                        ord_obj.mark_filled(filled_amount=ord_obj.quote_amount)
+                        logger.info(
+                            f"Order FILLED: {ord_obj.symbol} order_id={ex_id}, "
+                            f"filled_amount={ord_obj.quote_amount}, prev_status={ord_obj.status}"
                         )
                         updated += 1
-                    elif status == "cancelled":
-                        ord_obj.mark_cancelled()
+
+                    elif binance_status in ["CANCELED", "EXPIRED"]:
+                        # IMPORTANT: Do NOT reset filled_amount - preserve partial fills
+                        # Update filled_amount to correct value but keep partial executions
+                        need_update = False
+                        update_fields = ["exchange_data"]  # Always save exchange_data
+                        ord_obj.exchange_data = prepare_exchange_data_for_json(
+                            exch_order
+                        )
+
+                        if str(filled_quote) != str(ord_obj.filled_amount):
+                            old_filled = ord_obj.filled_amount
+                            ord_obj.filled_amount = filled_quote
+                            update_fields.append("filled_amount")
+                            need_update = True
+                            logger.info(
+                                f"Order CANCELLED with partial fill: {ord_obj.symbol} order_id={ex_id} "
+                                f"filled_quote: {old_filled} -> {filled_quote}"
+                            )
+
+                        if ord_obj.status != "cancelled":
+                            ord_obj.status = "cancelled"
+                            update_fields.extend(["status", "updated_at"])
+                            need_update = True
+                            logger.info(
+                                f"Order CANCELLED: {ord_obj.symbol} order_id={ex_id}, "
+                                f"prev_status={ord_obj.status}"
+                            )
+
+                        if need_update or update_fields:
+                            ord_obj.save(update_fields=list(set(update_fields)))
+                            updated += 1
+
+                    elif binance_status == "REJECTED":
+                        error_msg = exch_order.get(
+                            "error_message", "Unknown rejection reason"
+                        )
+                        # Save exchange_data first for diagnostics
+                        ord_obj.exchange_data = prepare_exchange_data_for_json(
+                            exch_order
+                        )
+                        ord_obj.mark_rejected(error_message=error_msg)
+                        logger.info(
+                            f"Order REJECTED: {ord_obj.symbol} order_id={ex_id}, "
+                            f"prev_status={ord_obj.status}, reason={error_msg}"
+                        )
                         updated += 1
-                    elif status == "rejected":
-                        ord_msg = ""
-                        ord_obj.mark_rejected(error_message=ord_msg)
-                        updated += 1
+
+                    else:
+                        logger.warning(
+                            f"Unknown order status: {ord_obj.symbol} order_id={ex_id}, "
+                            f"binance_status={binance_status}, prev_status={ord_obj.status}"
+                        )
                 except Exception as e:  # noqa: BLE001
                     logger.warning(
-                        f"Failed to sync order {ord_obj.id} for user {acc.user_id}: {e}"
+                        f"Failed to sync order {ord_obj.symbol} order_id={ex_id} "
+                        f"for user {acc.user_id}: {e}",
+                        exc_info=True,
                     )
                     errors += 1
 
@@ -324,9 +577,11 @@ def strategy_tick_task(self) -> dict[str, Any]:
                 f"Processing strategy {strategy.id} ({strategy.name}) for account {account.name}"
             )
 
-            # Step 1: Update portfolio state
+            # Step 1: Update portfolio state with fresh prices for auto-trading
             state, error_code = asyncio.run(
-                portfolio_service.upsert_portfolio_state(account, source="tick")
+                portfolio_service.upsert_portfolio_state(
+                    account, source="tick", force_refresh_prices=True
+                )
             )
 
             if error_code:
@@ -353,9 +608,11 @@ def strategy_tick_task(self) -> dict[str, Any]:
                         f"Portfolio state age check passed: {state_age_ms}ms (strategy {strategy.id})"
                     )
 
-            # Step 2: Calculate rebalance plan
+            # Step 2: Calculate rebalance plan using fresh portfolio state
             plan = asyncio.run(
-                rebalance_service.calculate_rebalance_plan(strategy, account)
+                rebalance_service.calculate_rebalance_plan(
+                    strategy, account, portfolio_state=state, force_refresh_prices=True
+                )
             )
 
             if not plan:
@@ -392,16 +649,8 @@ def strategy_tick_task(self) -> dict[str, Any]:
                     else:
                         orders_by_base[base] = order
 
-            # Step 4: Filter actions by strategy quote asset
-            filtered_actions = []
-            for action in plan.actions:
-                symbol = action.asset
-                if symbol.endswith(strategy.quote_asset):
-                    filtered_actions.append(action)
-                else:
-                    logger.info(
-                        f"Skipping symbol {symbol} - not matching quote asset {strategy.quote_asset}"
-                    )
+            # Step 4: Plan уже содержит базовые активы, используем все actions
+            filtered_actions = plan.actions
 
             # Cancel duplicate orders first
             adapter = account.get_adapter()
@@ -449,8 +698,10 @@ def strategy_tick_task(self) -> dict[str, Any]:
                 if operations_performed >= max_operations_per_tick:
                     break
 
-                symbol = action.asset
-                base = symbol[: -len(strategy.quote_asset)]
+                base = action.asset  # "BTC", "ETH", etc
+                if base == strategy.quote_asset:
+                    continue  # пропускаем quote currency
+                pair = f"{base}{strategy.quote_asset}"  # "BTCUSDT"
                 existing_order = orders_by_base.get(base)
 
                 try:
@@ -469,19 +720,22 @@ def strategy_tick_task(self) -> dict[str, Any]:
                     if operation_performed:
                         operations_performed += 1
                         logger.info(
-                            f"Operation performed for {symbol}: strategy={strategy.id}, "
+                            f"Operation performed for base={base} pair={pair}: strategy={strategy.id}, "
                             f"action={action.action}"
                         )
 
                 except Exception as e:
-                    logger.error(f"Error processing asset {symbol}: {e}", exc_info=True)
+                    logger.error(
+                        f"Error processing base={base} pair={pair}: {e}", exc_info=True
+                    )
                     errors += 1
 
             # Step 6: Cancel orders for bases that are no longer in the universe
             plan_bases = set()
             for action in filtered_actions:
-                plan_base = action.asset[: -len(strategy.quote_asset)]
-                plan_bases.add(plan_base)
+                plan_base = action.asset  # базовый актив напрямую
+                if plan_base != strategy.quote_asset:
+                    plan_bases.add(plan_base)
 
             orphaned_bases = set(orders_by_base.keys()) - plan_bases
             for orphaned_base in orphaned_bases:
@@ -552,7 +806,7 @@ async def _process_asset_tick(
     Returns True if an operation (cancel/place) was performed.
     """
 
-    base = action.asset[: -len(strategy.quote_asset)]
+    base = action.asset  # базовый актив напрямую
 
     # Skip if this base was already cancelled this tick
     if base in cancelled_bases_this_tick:
@@ -738,17 +992,42 @@ async def _place_new_order(strategy, account, action, adapter, tick_start_time):
     """
     import hashlib
     import time
+    from decimal import Decimal
 
+    from asgiref.sync import sync_to_async
     from django.utils import timezone
 
     from strategies.models import Order
+    from strategies.views import prepare_exchange_data_for_json
+
+    # Async обертки для Django ORM
+    @sync_to_async
+    def get_existing_live_orders(user, strategy, quote_asset):
+        return list(
+            Order.objects.filter(
+                user=user,
+                strategy=strategy,
+                status__in=["pending", "submitted", "open"],
+                symbol__endswith=quote_asset,
+            )
+        )
+
+    @sync_to_async
+    def check_order_exists(client_order_id):
+        return Order.objects.filter(client_order_id=client_order_id).exists()
+
+    @sync_to_async
+    def create_order(**kwargs):
+        return Order.objects.create(**kwargs)
 
     try:
+        # Определяем базовый актив и торговую пару
+        base = action.asset  # базовый актив напрямую
+        pair = f"{base}{strategy.quote_asset}"  # торговая пара для биржи
+
         # Clock drift protection: if tick is running too long, skip place operations
         elapsed_seconds = time.time() - tick_start_time
         if elapsed_seconds > 60:
-            symbol = action.asset
-            base = symbol[: -len(strategy.quote_asset)]
             logger.warning(
                 f"Skipping place for {base}: tick running too long ({elapsed_seconds:.1f}s > 60s threshold) - "
                 f"possible clock drift or worker lag"
@@ -766,14 +1045,11 @@ async def _place_new_order(strategy, account, action, adapter, tick_start_time):
 
         # Critical safety check: ensure no live orders exist for this base
         # This protects against race conditions between ticks
-        symbol = action.asset
-        base = symbol[: -len(strategy.quote_asset)]
+        base = action.asset  # базовый актив напрямую
+        pair = f"{base}{strategy.quote_asset}"
 
-        existing_live_orders = Order.objects.filter(
-            user=account.user,
-            strategy=strategy,
-            status__in=["pending", "submitted", "open"],
-            symbol__endswith=strategy.quote_asset,
+        existing_live_orders = await get_existing_live_orders(
+            account.user, strategy, strategy.quote_asset
         )
 
         # Check if any live order matches this base
@@ -817,20 +1093,20 @@ async def _place_new_order(strategy, account, action, adapter, tick_start_time):
         client_order_id = hashlib.sha1(coid_seed.encode()).hexdigest()[:20]
 
         # Check if order with this client_order_id already exists
-        if Order.objects.filter(client_order_id=client_order_id).exists():
+        if await check_order_exists(client_order_id):
             logger.info(
                 f"Order with client_order_id {client_order_id} already exists, skipping"
             )
             return False
 
         logger.info(
-            f"Placing auto-trade order: {side} {symbol} @ {limit_price}, amount: {quote_amount}"
+            f"Placing auto-trade order: {side} {pair} @ {limit_price}, amount: {quote_amount}"
         )
 
         # Place order through exchange adapter
         exchange_order = await adapter.place_order(
             account=account.account_type,
-            symbol=symbol,
+            symbol=pair,
             side=side,
             limit_price=limit_price,
             quote_amount=quote_amount,
@@ -838,20 +1114,23 @@ async def _place_new_order(strategy, account, action, adapter, tick_start_time):
         )
 
         # Create Order record in database
-        Order.objects.create(
+        await create_order(
             user=account.user,
             strategy=strategy,
             execution=None,  # Auto-trade orders don't belong to manual executions
             exchange_order_id=exchange_order["id"],
             client_order_id=client_order_id,
             exchange=account.exchange,
-            symbol=symbol,
+            symbol=pair,
             side=side,
             status="submitted",
             limit_price=exchange_order["limit_price"],
             quote_amount=exchange_order["quote_amount"],
-            filled_amount=exchange_order.get("filled_amount", 0),
+            filled_amount=Decimal("0"),  # Always 0 at creation - poller will update
             submitted_at=timezone.now(),
+            exchange_data=prepare_exchange_data_for_json(
+                dict(exchange_order)
+            ),  # Save exchange data for diagnostics
         )
 
         _log_auto_trade_decision(
@@ -868,7 +1147,5 @@ async def _place_new_order(strategy, account, action, adapter, tick_start_time):
         return True
 
     except Exception as e:
-        logger.error(
-            f"Failed to place auto-trade order for {symbol}: {e}", exc_info=True
-        )
+        logger.error(f"Failed to place auto-trade order for {pair}: {e}", exc_info=True)
         return False

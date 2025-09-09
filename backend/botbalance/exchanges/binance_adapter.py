@@ -409,28 +409,8 @@ class BinanceAdapter(ExchangeAdapter):
                 # Re-raise other errors
                 raise
 
-    # Override: stricter symbol validation with testnet allowlist
-    def validate_symbol(self, symbol: str) -> None:
-        super().validate_symbol(symbol)
-        try:
-            from django.conf import settings as dj_settings
-        except Exception:
-            dj_settings = settings
-        if self.testnet:
-            allowed = getattr(
-                dj_settings,
-                "BINANCE_TESTNET_ACTIVE_SYMBOLS",
-                os.getenv("BINANCE_TESTNET_ACTIVE_SYMBOLS", "BTCUSDT,ETHUSDT,BNBUSDT"),
-            )
-            allowed_set = {
-                s.strip().upper() for s in str(allowed).split(",") if s.strip()
-            }
-            if symbol.upper() not in allowed_set:
-                from .exceptions import InvalidSymbolError
-
-                raise InvalidSymbolError(
-                    f"Symbol {symbol} not allowed on testnet. Allowed: {sorted(allowed_set)}"
-                )
+    # Note: Symbol validation now relies only on base class validation
+    # Strategy universe controls which symbols are allowed
 
     async def ping(self) -> bool:
         await self._request("GET", "/api/v3/ping")
@@ -730,6 +710,47 @@ class BinanceAdapter(ExchangeAdapter):
             logger.debug(
                 f"Failed to get order status for {order_id or client_order_id} on {symbol}: {e}"
             )
+            raise
+
+    async def get_order_trades(
+        self,
+        symbol: str,
+        *,
+        order_id: str | None = None,
+        client_order_id: str | None = None,
+        account: str | None = None,
+    ) -> list[dict]:
+        """
+        Get all trades for a specific order.
+
+        Returns list of trade objects with fields like:
+        - id, orderId, price, qty, quoteQty, commission, commissionAsset, time, isBuyer, isMaker
+        """
+        if getattr(settings, "EXCHANGE_ENV", "live") == "mock":
+            # Mock mode - return empty trades list
+            return []
+
+        # Build request parameters
+        params = {"symbol": symbol}
+        if order_id:
+            params["orderId"] = order_id
+        elif client_order_id:
+            params["origClientOrderId"] = client_order_id
+        else:
+            raise ValueError("provide exactly one of order_id or client_order_id")
+
+        try:
+            data = await self._signed_request("GET", "/api/v3/myTrades", params=params)
+            return data if isinstance(data, list) else []
+        except ExchangeAPIError as e:
+            # Handle specific cases
+            error_code = getattr(e, "error_code", None)
+            if error_code in ("-2013", -2013):
+                # Order does not exist - return empty list
+                logger.warning(
+                    f"Order trades not found: {symbol} order_id={order_id} client_order_id={client_order_id}"
+                )
+                return []
             raise
 
     async def cancel_order(

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 
 import { Button } from '@shared/ui/Button';
+import { formatSmartPrice } from '@shared/lib/utils';
 import {
   useStrategy,
   useRebalancePlan,
@@ -105,16 +106,16 @@ const ActionRow: React.FC<ActionRowProps> = ({ action }) => {
               {action.asset}
             </div>
             <div className="text-xs" style={{ color: 'rgb(var(--fg-muted))' }}>
-              @ $
-              {parseFloat(
+              @
+              {formatSmartPrice(
                 action.normalized_order_price || action.order_price,
-              ).toFixed(2)}
+              )}
             </div>
             <div
               className="text-xs"
               style={{ color: 'rgb(var(--color-fg-subtle))' }}
             >
-              Market: ${parseFloat(action.market_price).toFixed(2)}
+              Market: {formatSmartPrice(action.market_price)}
             </div>
           </div>
         ) : action.action === 'hold' ? (
@@ -600,14 +601,7 @@ export const RebalancePlan: React.FC<RebalancePlanProps> = ({ className }) => {
                                     maximumFractionDigits: 2,
                                   },
                                 )}{' '}
-                                @ $
-                                {parseFloat(order.limit_price).toLocaleString(
-                                  undefined,
-                                  {
-                                    minimumFractionDigits: 2,
-                                    maximumFractionDigits: 2,
-                                  },
-                                )}
+                                @ {formatSmartPrice(order.limit_price)}
                               </span>
                             </div>
                             <span

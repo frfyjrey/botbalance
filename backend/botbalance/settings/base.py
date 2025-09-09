@@ -170,10 +170,7 @@ BINANCE_SPOT_TESTNET_API_SECRET = os.getenv("BINANCE_SPOT_TESTNET_API_SECRET", "
 # Order polling (Step 5): disabled by default; enable together with EXCHANGE_ENV=live
 ENABLE_ORDER_POLLING = os.getenv("ENABLE_ORDER_POLLING", "false").lower() == "true"
 
-# Binance testnet active symbols allowlist (CSV)
-BINANCE_TESTNET_ACTIVE_SYMBOLS = os.getenv(
-    "BINANCE_TESTNET_ACTIVE_SYMBOLS", "BTCUSDT,ETHUSDT,BNBUSDT"
-)
+# Note: Symbol restrictions removed - strategy universe controls allowed symbols
 
 # =============================================================================
 # DJANGO REST FRAMEWORK

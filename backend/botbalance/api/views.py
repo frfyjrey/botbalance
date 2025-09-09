@@ -1400,8 +1400,11 @@ def cancel_order_view(request, order_id: int):
     Cancel specific user order by our Order.id or exchange_order_id.
     """
     import asyncio
+    import logging
 
     from botbalance.exchanges.models import ExchangeAccount
+
+    logger = logging.getLogger(__name__)
 
     try:
         # Load user's order
@@ -1463,6 +1466,46 @@ def cancel_order_view(request, order_id: int):
                     )
                 )
             if ok:
+                # After successful cancel, get actual order status to update filled_amount
+                try:
+                    from botbalance.tasks.tasks import _calculate_filled_quote_amount
+                    from strategies.views import prepare_exchange_data_for_json
+
+                    # Get current order status from exchange to capture any partial fills
+                    order_status = asyncio.run(
+                        adapter.get_order_status(
+                            symbol=order.symbol,
+                            order_id=order.exchange_order_id
+                            if order.exchange_order_id
+                            else None,
+                            client_order_id=order.client_order_id
+                            if order.client_order_id
+                            else None,
+                        )
+                    )
+
+                    # Calculate actual filled amount from exchange data
+                    filled_quote = _calculate_filled_quote_amount(
+                        order_status, order.quote_amount
+                    )
+                    if filled_quote and str(filled_quote) != str(order.filled_amount):
+                        # Update filled_amount to preserve partial fills
+                        old_filled = order.filled_amount
+                        order.filled_amount = filled_quote
+                        order.exchange_data = prepare_exchange_data_for_json(
+                            dict(order_status)
+                        )
+                        logger.info(
+                            f"Updated filled_amount on cancel: {order.symbol} order_id={order.id} "
+                            f"filled: {old_filled} -> {filled_quote}"
+                        )
+
+                except Exception as status_error:
+                    # Log error but don't fail the cancellation
+                    logger.warning(
+                        f"Failed to update filled_amount after cancel for order {order.id}: {status_error}"
+                    )
+
                 order.mark_cancelled()
                 return Response({"status": "success", "order_id": order.id})
             return Response(

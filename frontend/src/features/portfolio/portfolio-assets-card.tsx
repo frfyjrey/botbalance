@@ -1,20 +1,11 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@shared/ui/Button';
-import { formatNumberEnUS } from '@shared/lib/utils';
-import {
-  usePortfolioDataWithErrors,
-  type PortfolioAsset,
-} from '@entities/portfolio';
+import { formatNumberEnUS, formatSmartPrice } from '@shared/lib/utils';
+import { usePortfolioDataWithErrors } from '@entities/portfolio';
 import { PortfolioErrorDisplay } from './portfolio-error-display';
 import { StaleDataBadge } from './stale-data-badge';
-import {
-  useBalances,
-  getAssetDisplayName,
-  getTotalValue,
-  sortBalancesByValue,
-  getBalancePercentage,
-} from '@entities/balance';
+import { getAssetDisplayName } from '@entities/balance';
 
 interface PortfolioAssetsCardProps {
   className?: string;
@@ -36,9 +27,7 @@ const formatValue = (value: string | number) => {
 
 const formatPrice = (price: string | number | null | undefined) => {
   if (!price) return 'N/A';
-  const num = typeof price === 'number' ? price : parseFloat(price);
-  if (num < 0.01) return `$${num.toFixed(6)}`;
-  return `$${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return formatSmartPrice(price);
 };
 
 const getPriceSourceColor = (source: string) => {
@@ -87,11 +76,9 @@ export const PortfolioAssetsCard: React.FC<PortfolioAssetsCardProps> = ({
 
   // Use State API (feature flag removed - State API is now default)
   const portfolioQuery = usePortfolioDataWithErrors();
-
-  const { data: balancesData, isLoading, isError } = useBalances();
   const [showAll, setShowAll] = React.useState(false);
 
-  if (isLoading) {
+  if (portfolioQuery.isLoading) {
     return (
       <div className={`card-github ${className}`}>
         <div
@@ -121,10 +108,11 @@ export const PortfolioAssetsCard: React.FC<PortfolioAssetsCardProps> = ({
   }
 
   if (
-    isError ||
-    !balancesData ||
-    !balancesData.balances ||
-    balancesData.balances.length === 0
+    portfolioQuery.isError ||
+    !portfolioQuery.data ||
+    !portfolioQuery.data.portfolio ||
+    !portfolioQuery.data.portfolio.assets ||
+    portfolioQuery.data.portfolio.assets.length === 0
   ) {
     return (
       <div className={`card-github ${className}`}>
@@ -227,17 +215,23 @@ export const PortfolioAssetsCard: React.FC<PortfolioAssetsCardProps> = ({
   }
 
   const response = portfolioQuery.data;
-  const portfolioMap: Record<string, PortfolioAsset> =
-    response && response.status === 'success' && response.portfolio
-      ? Object.fromEntries(response.portfolio.assets.map(a => [a.symbol, a]))
-      : {};
+  const assets = response?.portfolio?.assets ?? [];
 
-  const totalValue = getTotalValue(balancesData);
-  const sortedBalances = sortBalancesByValue(balancesData.balances ?? []);
-  const totalAssets = sortedBalances.length;
-  const visibleBalances = showAll
-    ? sortedBalances
-    : sortedBalances.slice(0, maxItems);
+  // Calculate total value from portfolio assets
+  const totalValue = assets.reduce(
+    (sum, asset) => sum + parseFloat(asset.value_usd),
+    0,
+  );
+
+  // Sort assets by USD value (highest first)
+  const sortedAssets = [...assets].sort(
+    (a, b) => parseFloat(b.value_usd) - parseFloat(a.value_usd),
+  );
+
+  const totalAssets = sortedAssets.length;
+  const visibleAssets = showAll
+    ? sortedAssets
+    : sortedAssets.slice(0, maxItems);
 
   return (
     <div className={`card-github ${className}`}>
@@ -302,7 +296,7 @@ export const PortfolioAssetsCard: React.FC<PortfolioAssetsCardProps> = ({
                 </Button>
               </>
             )}
-            {balancesData.exchange_account && (
+            {response?.portfolio?.exchange_account && (
               <span
                 className="px-2 py-1 rounded text-xs font-medium"
                 style={{
@@ -310,7 +304,7 @@ export const PortfolioAssetsCard: React.FC<PortfolioAssetsCardProps> = ({
                   color: 'rgb(var(--fg-default))',
                 }}
               >
-                {balancesData.exchange_account}
+                {response.portfolio.exchange_account}
               </span>
             )}
           </div>
@@ -326,9 +320,9 @@ export const PortfolioAssetsCard: React.FC<PortfolioAssetsCardProps> = ({
             <span style={{ color: 'rgb(var(--fg-muted))' }}>
               {t('balances.total_value')}
             </span>
-            {balancesData.timestamp && (
+            {portfolioQuery.timestamp && (
               <span style={{ color: 'rgb(var(--fg-muted))' }}>
-                {new Date(balancesData.timestamp).toLocaleString()}
+                {new Date(portfolioQuery.timestamp).toLocaleString()}
               </span>
             )}
           </div>
@@ -358,11 +352,10 @@ export const PortfolioAssetsCard: React.FC<PortfolioAssetsCardProps> = ({
           </div>
 
           {/* Rows */}
-          {visibleBalances.map((item, index: number) => {
-            const info = portfolioMap[item.asset];
+          {visibleAssets.map((item, index: number) => {
             return (
               <div
-                key={item.asset}
+                key={item.symbol}
                 className="flex items-center py-3 px-4 border-b last:border-b-0"
                 style={{ borderBottomColor: 'rgb(var(--border))' }}
               >
@@ -380,19 +373,19 @@ export const PortfolioAssetsCard: React.FC<PortfolioAssetsCardProps> = ({
                 <div className="flex-1 min-w-0 mx-4">
                   <div className="flex items-center gap-3">
                     {/* Icon */}
-                    {getAssetIcon(item.asset)}
+                    {getAssetIcon(item.symbol)}
                     <div className="flex items-center gap-2 min-w-0">
                       <h4
                         className="font-semibold truncate"
                         style={{ color: 'rgb(var(--fg-default))' }}
                       >
-                        {getAssetDisplayName(item.asset)}
+                        {getAssetDisplayName(item.symbol)}
                       </h4>
-                      {info?.price_source && (
+                      {item.price_source && (
                         <span
-                          className={`px-2 py-0.5 text-xs rounded-full ${getPriceSourceColor(info.price_source)}`}
+                          className={`px-2 py-0.5 text-xs rounded-full ${getPriceSourceColor(item.price_source)}`}
                         >
-                          {info.price_source}
+                          {item.price_source}
                         </span>
                       )}
                     </div>
@@ -401,7 +394,7 @@ export const PortfolioAssetsCard: React.FC<PortfolioAssetsCardProps> = ({
                     className="text-sm truncate"
                     style={{ color: 'rgb(var(--fg-muted))' }}
                   >
-                    {formatBalance(item.balance, item.asset)}
+                    {formatBalance(parseFloat(item.balance), item.symbol)}
                   </p>
                 </div>
 
@@ -411,7 +404,7 @@ export const PortfolioAssetsCard: React.FC<PortfolioAssetsCardProps> = ({
                     className="text-sm font-medium"
                     style={{ color: 'rgb(var(--fg-default))' }}
                   >
-                    {formatPrice(info?.price_usd)}
+                    {formatPrice(item.price_usd)}
                   </div>
                 </div>
 
@@ -421,13 +414,19 @@ export const PortfolioAssetsCard: React.FC<PortfolioAssetsCardProps> = ({
                     className="text-sm font-semibold"
                     style={{ color: 'rgb(var(--fg-default))' }}
                   >
-                    {formatValue(item.usd_value)}
+                    {formatValue(parseFloat(item.value_usd))}
                   </div>
                   <div
                     className="text-xs"
                     style={{ color: 'rgb(var(--fg-muted))' }}
                   >
-                    {getBalancePercentage(item, totalValue).toFixed(1)}%
+                    {totalValue > 0
+                      ? (
+                          (parseFloat(item.value_usd) / totalValue) *
+                          100
+                        ).toFixed(1)
+                      : '0.0'}
+                    %
                   </div>
                 </div>
               </div>

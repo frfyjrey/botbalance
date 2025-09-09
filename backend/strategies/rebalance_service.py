@@ -12,7 +12,7 @@ from typing import Any, NamedTuple
 
 from asgiref.sync import sync_to_async
 
-from botbalance.exchanges.models import ExchangeAccount
+from botbalance.exchanges.models import ExchangeAccount, PortfolioState
 from botbalance.exchanges.portfolio_service import portfolio_service
 
 from .models import Strategy
@@ -112,10 +112,29 @@ class RebalanceService:
         quantizer = Decimal("0.1") ** precision
         return value.quantize(quantizer, rounding=ROUND_HALF_UP)
 
+    def _handle_portfolio_state_error(self, error_code: str, strategy_name: str):
+        """Handle portfolio state errors with appropriate exceptions."""
+        if error_code == "ERROR_PRICING":
+            raise NoPricingDataError(
+                "Pricing data unavailable - cannot place orders without accurate prices"
+            )
+        elif error_code == "TOO_MANY_REQUESTS":
+            raise RateLimitExceededError(
+                "Rate limited - skipping rebalance for this cycle"
+            )
+        elif error_code == "NO_ACTIVE_STRATEGY":
+            raise NoActiveStrategyError("No active strategy found for connector")
+        else:
+            # Unknown error code
+            raise RebalanceError(
+                f"Unknown portfolio state error: {error_code}", error_code
+            )
+
     async def calculate_rebalance_plan(
         self,
         strategy: Strategy,
         exchange_account: ExchangeAccount,
+        portfolio_state: PortfolioState | None = None,
         force_refresh_prices: bool = False,
     ) -> RebalancePlan | None:
         """
@@ -124,6 +143,7 @@ class RebalanceService:
         Args:
             strategy: User's trading strategy with target allocations
             exchange_account: User's exchange account for portfolio data
+            portfolio_state: Optional pre-calculated portfolio state (for tick tasks)
             force_refresh_prices: Force refresh prices from exchange
 
         Returns:
@@ -132,42 +152,80 @@ class RebalanceService:
         try:
             logger.info(f"Calculating rebalance plan for strategy: {strategy.name}")
 
-            # NEW: First update PortfolioState for the connector before rebalancing
-            logger.info(
-                f"Updating PortfolioState for {exchange_account.name} before rebalancing"
-            )
-            (
-                portfolio_state,
-                error_code,
-            ) = await self.portfolio_service.upsert_portfolio_state(
-                exchange_account,
-                source="tick",  # Rebalancing trigger
-            )
+            # Handle portfolio state: use passed state or create/update
+            if portfolio_state:
+                # Check state freshness
+                from django.utils import timezone
 
-            if error_code:
-                logger.error(
-                    f"Cannot rebalance strategy {strategy.name}: PortfolioState error: {error_code}"
-                )
-                if error_code == "ERROR_PRICING":
-                    raise NoPricingDataError(
-                        "Pricing data unavailable - cannot place orders without accurate prices"
+                state_age = (timezone.now() - portfolio_state.ts).total_seconds()
+
+                if state_age <= 5:
+                    state_age_ms = int(state_age * 1000)
+                    logger.info(
+                        f"Using passed portfolio state (source=fresh, age={state_age_ms}ms)"
                     )
-                elif error_code == "TOO_MANY_REQUESTS":
-                    raise RateLimitExceededError(
-                        "Rate limited - skipping rebalance for this cycle"
-                    )
-                elif error_code == "NO_ACTIVE_STRATEGY":
-                    raise NoActiveStrategyError(
-                        "No active strategy found for connector"
-                    )
+                elif state_age <= 60:
+                    state_age_ms = int(state_age * 1000)
+                    # If force_refresh_prices=True, use passed state without trying to update
+                    if force_refresh_prices:
+                        logger.info(
+                            f"Using passed portfolio state (source=fresh, age={state_age_ms}ms, force_refresh=True)"
+                        )
+                    else:
+                        logger.info(
+                            f"State is old ({state_age:.1f}s), attempting update"
+                        )
+                        # Try to update, but handle TOO_MANY_REQUESTS gracefully
+                        (
+                            updated_state,
+                            error_code,
+                        ) = await self.portfolio_service.upsert_portfolio_state(
+                            exchange_account,
+                            source="manual",
+                            force_refresh_prices=force_refresh_prices,
+                        )
+
+                        if error_code == "TOO_MANY_REQUESTS":
+                            logger.info(
+                                f"Cooldown active, using existing state (source=fallback, age={state_age_ms}ms)"
+                            )
+                            # Keep existing portfolio_state
+                        elif error_code:
+                            logger.error(f"Failed to update state: {error_code}")
+                            self._handle_portfolio_state_error(
+                                error_code, strategy.name
+                            )
+                        else:
+                            portfolio_state = updated_state
+                            logger.info(
+                                "Successfully updated portfolio state (source=fresh)"
+                            )
                 else:
-                    # Unknown error code
-                    raise RebalanceError(
-                        f"Unknown portfolio state error: {error_code}", error_code
+                    state_age_ms = int(state_age * 1000)
+                    logger.error(
+                        f"Portfolio state too old (age={state_age_ms}ms > 60000ms), cannot rebalance"
                     )
+                    raise RebalanceError(
+                        f"Stale portfolio state: {state_age_ms}ms old", "STALE_STATE"
+                    )
+            else:
+                # No state passed, create new one (legacy/manual calls)
+                logger.info(f"Creating new PortfolioState for {exchange_account.name}")
+                (
+                    portfolio_state,
+                    error_code,
+                ) = await self.portfolio_service.upsert_portfolio_state(
+                    exchange_account,
+                    source="manual",
+                    force_refresh_prices=force_refresh_prices,
+                )
+
+                if error_code:
+                    logger.error(f"Cannot create portfolio state: {error_code}")
+                    self._handle_portfolio_state_error(error_code, strategy.name)
 
             if not portfolio_state:
-                logger.error("Failed to create/update PortfolioState")
+                logger.error("No valid portfolio state available")
                 return None
 
             # Convert PortfolioState to portfolio data format
@@ -560,7 +618,12 @@ class RebalanceService:
             Dictionary with impact analysis or None if calculation fails
         """
         try:
-            plan = await self.calculate_rebalance_plan(strategy, exchange_account)
+            plan = await self.calculate_rebalance_plan(
+                strategy,
+                exchange_account,
+                portfolio_state=None,
+                force_refresh_prices=False,
+            )
             if not plan:
                 return None
 

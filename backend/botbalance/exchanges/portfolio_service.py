@@ -10,6 +10,7 @@ from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 from typing import NamedTuple
 
+from asgiref.sync import sync_to_async
 from django.core.cache import cache  # Still needed for cooldown
 from django.utils import timezone
 
@@ -323,7 +324,7 @@ class PortfolioService:
     # get_exchange_status removed - replaced by simple health fields in ExchangeAccount model
 
     async def calculate_state_for_strategy(
-        self, exchange_account: ExchangeAccount
+        self, exchange_account: ExchangeAccount, force_refresh_prices: bool = False
     ) -> dict | None:
         """
         Calculate portfolio state for a specific strategy (universe-focused).
@@ -333,6 +334,7 @@ class PortfolioService:
 
         Args:
             exchange_account: Exchange account to calculate state for
+            force_refresh_prices: Force refresh prices from exchange (ignores cache)
 
         Returns:
             Dict with state data or None if calculation fails:
@@ -422,7 +424,7 @@ class PortfolioService:
 
             # Batch price fetch using adapter (new architecture)
             prices_raw = await self.price_service.get_prices_batch_with_adapter(
-                adapter, price_pairs
+                adapter, price_pairs, force_refresh=force_refresh_prices
             )
             if not prices_raw:
                 prices_raw = {}
@@ -499,14 +501,18 @@ class PortfolioService:
             return None
 
     async def upsert_portfolio_state(
-        self, exchange_account: ExchangeAccount, source: str = "tick"
+        self,
+        exchange_account: ExchangeAccount,
+        source: str = "tick",
+        force_refresh_prices: bool = False,
     ) -> tuple[PortfolioState | None, str | None]:
         """
         Atomically update/create PortfolioState for exchange account.
 
         Args:
             exchange_account: Exchange account to update state for
-            source: Source of the update ("tick", "manual")
+            source: Source of the update ("tick", "manual", "rebalance")
+            force_refresh_prices: Force refresh prices from exchange (ignores cache)
 
         Returns:
             Tuple of (PortfolioState, error_code) where error_code is None on success
@@ -533,7 +539,9 @@ class PortfolioService:
                 return None, "TOO_MANY_REQUESTS"
 
             # 2. Calculate state data
-            state_data = await self.calculate_state_for_strategy(exchange_account)
+            state_data = await self.calculate_state_for_strategy(
+                exchange_account, force_refresh_prices=force_refresh_prices
+            )
             if state_data is None:
                 # Check specific reason for failure
                 from strategies.models import Strategy
@@ -592,6 +600,38 @@ class PortfolioService:
             logger.error(f"Failed to upsert portfolio state: {e}", exc_info=True)
             await sync_to_async(exchange_account.update_health_error)("ERROR_PRICING")
             return None, "ERROR_PRICING"  # Generic error
+
+    # Helper methods for rebalance plan optimization
+    async def get_latest_portfolio_state(
+        self, exchange_account: ExchangeAccount
+    ) -> PortfolioState | None:
+        """
+        Get the latest PortfolioState for the exchange account.
+        Returns None if no state exists.
+        """
+        try:
+            return await sync_to_async(
+                PortfolioState.objects.filter(exchange_account=exchange_account).latest
+            )("updated_at")
+        except PortfolioState.DoesNotExist:
+            return None
+
+    def is_state_fresh(self, state: PortfolioState, threshold_sec: int = 10) -> bool:
+        """
+        Check if portfolio state is fresh enough (within threshold seconds).
+
+        Args:
+            state: PortfolioState to check
+            threshold_sec: Maximum age in seconds (default: 10)
+
+        Returns:
+            True if state is fresh, False otherwise
+        """
+        if not state:
+            return False
+
+        age_seconds = (timezone.now() - state.ts).total_seconds()
+        return age_seconds <= threshold_sec
 
 
 # Singleton instance
